@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title></title>
+
+    <!-- iOS Safari 的 PWA meta：manifest 它也會讀，但少了這幾個 apple-* tag 就不會有
+         standalone 啟動與正確的狀態列外觀／主畫面圖示。 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- 狀態列樣式選 default：black-translucent 會讓系統狀態列疊在內容上方並預期
+         深色底，跟這裡的淺色 chrome 衝突。 -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <!-- functions/manifest.webmanifest.ts 在請求當下查 D1 動態產生 name/short_name/
+         description（這趟行程真正的標題與日期），不是建置時的靜態檔，所以不能靠
+         vite-plugin-pwa 自動注入這行（見 vite.config.ts 的 manifest:false）。 -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+  </head>
+  <body>
+    <!--
+      CMYK 四色分版 SVG filter defs，抽自
+      design/_ds/broadsheet-ef68ebe5-1d36-48b2-80bb-e317bacc088a/_ds_bundle.js（約 86–107 行）。
+      styles.css 的 .cmyk 系列 class 用 filter:url(#sep-c) 等參照這裡的 defs，
+      必須存在於文件中才能生效（不能用外部檔案或 data URI 參照）。
+    -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <filter id="sep-c" color-interpolation-filters="sRGB">
+          <feColorMatrix type="matrix" values="1 0 0 0 0  0.467 0 0 0 0.533  0.310 0 0 0 0.690  0 0 0 0 1"/>
+        </filter>
+        <filter id="sep-m" color-interpolation-filters="sRGB">
+          <feColorMatrix type="matrix" values="0 0.161 0 0 0.839  0 1 0 0 0  0 0.576 0 0 0.424  0 0 0 0 1"/>
+        </filter>
+        <filter id="sep-y" color-interpolation-filters="sRGB">
+          <feColorMatrix type="matrix" values="0 0 0.071 0 0.929  0 0 0.267 0 0.733  0 0 1 0 0  0 0 0 0 1"/>
+        </filter>
+        <filter id="sep-k" color-interpolation-filters="sRGB">
+          <feColorMatrix type="matrix" values="0.112 0.375 0.038 0 0.475  0.113 0.379 0.038 0 0.471  0.113 0.380 0.038 0 0.468  0 0 0 0 1"/>
+        </filter>
+        <filter id="sep-all" color-interpolation-filters="sRGB">
+          <feColorMatrix in="SourceGraphic" type="matrix" values="1 0 0 0 0  0.467 0 0 0 0.533  0.310 0 0 0 0.690  0 0 0 0 1" data-plate-mat="c" result="c0"/>
+          <feComposite in="c0" in2="SourceAlpha" operator="in" result="c"/>
+          <feColorMatrix in="SourceGraphic" type="matrix" values="0 0.161 0 0 0.839  0 1 0 0 0  0 0.576 0 0 0.424  0 0 0 0 1" data-plate-mat="m" result="m0"/>
+          <feComposite in="m0" in2="SourceAlpha" operator="in" result="m1"/>
+          <feOffset in="m1" dx="5" dy="3" data-plate="m" result="m"/>
+          <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0.071 0 0.929  0 0 0.267 0 0.733  0 0 1 0 0  0 0 0 0 1" data-plate-mat="y" result="y0"/>
+          <feComposite in="y0" in2="SourceAlpha" operator="in" result="y1"/>
+          <feOffset in="y1" dx="-5" dy="-3" data-plate="y" result="y"/>
+          <feColorMatrix in="SourceGraphic" type="matrix" values="0.112 0.375 0.038 0 0.475  0.113 0.379 0.038 0 0.471  0.113 0.380 0.038 0 0.468  0 0 0 0 1" data-plate-mat="k" result="k0"/>
+          <feComposite in="k0" in2="SourceAlpha" operator="in" result="k1"/>
+          <feOffset in="k1" dx="3" dy="6" data-plate="k" result="k"/>
+          <feBlend in="m" in2="c" mode="multiply" result="s1"/>
+          <feBlend in="y" in2="s1" mode="multiply" result="s2"/>
+          <feBlend in="k" in2="s2" mode="multiply"/>
+        </filter>
+      </defs>
+    </svg>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

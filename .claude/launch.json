@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nagoya-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "nagoya-dev-cf",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:cf"],
+      "port": 8788
+    }
+  ]
+}

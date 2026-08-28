@@ -1,0 +1,2442 @@
+/* App shell 骨架。用 tokens.css 的變數與既有 class，不修改 tokens.css 本身。
+   視口基準 390×844。 */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* 禁止全站縮放手勢：viewport meta 的 user-scalable=no 在部分 iOS 版本下對雙指縮放不夠可靠，
+   touch-action:pan-x pan-y 額外從瀏覽器層面關掉 pinch-zoom（同時保留一般的滑動/捲動）。
+   雙擊放大另外在 main.tsx 用 JS 擋（iOS Safari 對 dblclick 縮放不吃 touch-action）。 */
+html,
+body {
+  touch-action: pan-x pan-y;
+}
+
+.app-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 430px;
+  margin: 0 auto;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+/* — 頂部安全區間隔 —
+   status-bar-style 是 "default"，iOS 把狀態列畫在內容以外，env(safe-area-inset-top)
+   實機量到恆為 0，所以不要再額外補固定 px。改成 black-translucent 才會有非 0 值。 */
+.safe-area-spacer {
+  flex: none;
+  height: env(safe-area-inset-top, 0px);
+  background: var(--color-bg);
+}
+
+/* — 可捲動內容區 — */
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* — 離線提示條 — */
+.offline-banner {
+  flex: none;
+  font-size: 11.5px;
+  background: var(--color-accent-2-100);
+  color: var(--color-accent-2-800);
+  padding: 7px 10px;
+  text-align: center;
+}
+
+/* — 分頁佔位頁面 — */
+.view-placeholder {
+  padding: 40px 22px;
+  text-align: center;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+/* — 底部 tab bar — */
+/* 底部留白只能用 env(safe-area-inset-bottom)，不要寫死 px——固定值會跟系統
+   home indicator 疊加。 */
+.tab-bar {
+  flex: none;
+  display: flex;
+  padding: 0 8px calc(env(safe-area-inset-bottom, 0px) + 2px);
+  border-top: 1px solid var(--color-divider);
+  background: var(--color-bg);
+}
+
+.tab-bar-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 0 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+.tab-bar-item span {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+}
+
+.tab-bar-item.is-active {
+  color: var(--color-accent);
+}
+
+/* — 左緣滑動返回的視覺回饋（useEdgeSwipeBack）— */
+.edge-back-indicator {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  z-index: 200;
+  width: 34px;
+  height: 34px;
+  border-radius: 0 17px 17px 0;
+  background: var(--color-text);
+  color: var(--color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 4px;
+  pointer-events: none;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 0.15s ease-out,
+    opacity 0.15s ease-out,
+    background-color 0.15s ease-out;
+}
+
+.edge-back-indicator.is-armed {
+  background: var(--color-accent);
+}
+
+/* — Toast — */
+.toast {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 46px;
+  z-index: 40;
+  padding: 11px 13px;
+  background: var(--color-text);
+  color: var(--color-bg);
+  border-radius: 3px;
+  font-size: 12.5px;
+  box-shadow: var(--shadow-md);
+  animation: fadein 0.18s;
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ==========================================================================
+   行程分頁（ItineraryTab）
+   ========================================================================== */
+
+/* — 下拉更新指示區 — */
+.pull-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  transition: height 0.15s ease;
+  flex: none;
+}
+
+.pull-indicator-spin {
+  animation: spin 0.8s linear infinite;
+}
+
+.spot-import-spin {
+  animation: spin 0.8s linear infinite;
+}
+
+.spot-import-photo-preview {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+/* — 行程分頁根容器：自己滾動（下拉更新只接在這個分頁） — */
+.itin {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  position: relative;
+}
+
+/* — 主視覺 — */
+/* 外層只做定位，不套 filter：.halftone 的 grayscale/contrast 只能套在照片層
+   （.itin-hero-photo），套在這層會連天氣塊的漸層遮罩一起被提亮，跟背景出現接縫。 */
+.itin-hero {
+  height: 200px;
+  position: relative;
+}
+
+.itin-hero-photo {
+  height: 200px;
+}
+
+.itin-hero-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.itin-masthead {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.itin-masthead span {
+  background: var(--color-bg);
+  padding: 3px 7px;
+}
+
+.itin-masthead-date {
+  margin-left: auto;
+}
+
+.itin-weather {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100px;
+  /* 用 bottom:0 而不是固定 height：top+height 各自捨入後可能兜不滿，底部會漏 1px
+     沒被遮罩蓋到的照片。top 拉高只是讓漸層起點更早，文字位置靠 padding-top 抵銷。 */
+  bottom: 0;
+  padding: 30px 14px 10px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+  /* 漸層終點用 var(--color-bg) 而非寫死色碼，才跟下方內容區背景保證一致。
+     這一層不受 halftone filter 影響，宣告的顏色就是最終呈現的顏色。 */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-bg) 0%, transparent),
+    color-mix(in srgb, var(--color-bg) 82%, transparent) 55%,
+    var(--color-bg)
+  );
+}
+
+.itin-weather-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 48px;
+}
+
+.itin-weather-text {
+  flex: 1;
+}
+
+.itin-weather-icon {
+  filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--color-neutral-100) 90%, transparent));
+}
+
+.itin-weather-temp {
+  font-size: 30px;
+  line-height: 1;
+  color: var(--color-accent-700);
+  text-shadow: 0 2px 4px color-mix(in srgb, var(--color-neutral-100) 90%, transparent);
+  margin: 0;
+}
+
+.itin-weather-desc {
+  font-size: 14px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  margin-top: 2px;
+  text-shadow: 0 1px 3px color-mix(in srgb, var(--color-neutral-100) 90%, transparent);
+}
+
+.itin-weather-hint {
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--color-text) 62%, transparent);
+  margin: 4px 0 0;
+}
+
+/* — 日期橫排 — */
+.itin-days {
+  display: flex;
+  overflow-x: auto;
+  padding: 16px 22px 4px;
+  gap: 7px;
+}
+
+.itin-day-chip {
+  flex: none;
+  font: inherit;
+  border: 1px solid var(--color-divider);
+  border-radius: 2px;
+  padding: 6px 11px;
+  background: transparent;
+  color: color-mix(in srgb, var(--color-text) 62%, transparent);
+  cursor: pointer;
+  text-align: left;
+}
+
+.itin-day-chip-date {
+  font-size: 12px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.itin-day-chip-wd {
+  font-size: 9.5px;
+  opacity: 0.75;
+  margin-top: 1px;
+}
+
+.itin-day-chip.is-selected {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* — 下一站 / 第一站 — */
+.itin-next {
+  padding: 14px 22px 4px;
+}
+
+.itin-next-kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.itin-next-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.itin-next-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.itin-next-time {
+  flex: none;
+  font-size: 26px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.itin-next-time.is-na {
+  color: color-mix(in srgb, var(--color-text) 35%, transparent);
+}
+
+.itin-next-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.itin-next-empty {
+  flex: 1;
+  min-width: 0;
+}
+
+.itin-next-title {
+  font-size: 19px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.itin-next-sub {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--color-text) 58%, transparent);
+  margin-top: 2px;
+}
+
+/* — 返回飯店 · 導航：貼著「下一站」列的圖示鈕，不再是獨立卡片 — */
+.itin-hotel-nav-btn {
+  flex: none;
+  width: 46px;
+  height: 46px;
+}
+
+/* — 當日標題列 — */
+.itin-day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 22px 2px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+.itin-day-header-hint {
+  flex: none;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: color-mix(in srgb, var(--color-text) 45%, transparent);
+}
+
+/* — 行程列表 — */
+.itin-plans {
+  padding: 0 22px;
+}
+
+.itin-plan-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 9%, transparent);
+  cursor: pointer;
+}
+
+.itin-plan-time {
+  flex: none;
+  width: 48px;
+  font-size: 14px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.itin-plan-time.is-na {
+  color: color-mix(in srgb, var(--color-text) 35%, transparent);
+}
+
+.itin-plan-icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+.itin-plan-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.itin-plan-title-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.itin-plan-title {
+  font-size: 14.5px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.itin-plan-sub {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--color-text) 58%, transparent);
+  white-space: pre-line;
+  margin-top: 2px;
+}
+
+.itin-plan-drive {
+  font-size: 11px;
+  color: var(--color-accent-700);
+  margin-top: 3px;
+}
+
+.itin-plan-caret {
+  flex: none;
+  align-self: center;
+  color: color-mix(in srgb, var(--color-text) 30%, transparent);
+}
+
+/* — 新增行程 — */
+.itin-add {
+  margin: 14px 22px 22px;
+  width: calc(100% - 44px);
+}
+
+@keyframes up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* ==========================================================================
+   行程資訊頁（PlanDetail）
+   ========================================================================== */
+
+.detail-page {
+  position: absolute;
+  inset: 0;
+  background: var(--color-bg);
+  z-index: 25;
+  overflow-y: auto;
+  animation: fadein 0.18s;
+}
+
+.detail-back {
+  margin: 12px 14px 0;
+}
+
+.detail-header {
+  padding: 10px 22px 0;
+}
+
+.detail-header-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.detail-time {
+  font-size: 34px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.detail-time.is-na {
+  color: color-mix(in srgb, var(--color-text) 35%, transparent);
+}
+
+.detail-title {
+  font-size: 27px;
+  margin: 6px 0 2px;
+}
+
+.detail-kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  margin: 0;
+}
+
+.detail-note {
+  font-size: 13.5px;
+  line-height: 1.6;
+  white-space: pre-line;
+  padding: 12px 22px 0;
+  margin: 0;
+}
+
+.detail-notify {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  padding: 6px 22px 0;
+  margin: 0;
+}
+
+.detail-drive-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 14px 22px 0;
+}
+
+.detail-grid-label {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+.detail-grid-value {
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 10px;
+  padding: 16px 22px 0;
+}
+
+.detail-actions .btn {
+  flex: 1;
+}
+
+.detail-section {
+  padding: 18px 22px 0;
+  margin-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 9%, transparent);
+}
+
+.detail-kicker-label {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  margin-bottom: 8px;
+}
+
+.detail-kicker-accent2 {
+  color: var(--color-accent-2);
+}
+
+.detail-cand-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+
+.detail-cand-row:first-of-type {
+  border-top: none;
+}
+
+.detail-cand-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-cand-title {
+  font-size: 14px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.detail-cand-teaser {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  margin-top: 2px;
+}
+
+/* — 行程資訊頁的照片區塊（PlanPhotoCarousel）：行程自己的照片＋連結景點的照片，
+   兩者都有時左右滑動切換。carousel 與 single 固定 190px 高，蓋掉 CMYK 大圖的
+   aspect-ratio，確保兩張 slide 等高。 — */
+.detail-photo-carousel {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  height: 190px;
+  margin: 16px 22px 14px;
+}
+
+.detail-photo-track {
+  display: flex;
+  height: 100%;
+  transition: transform 0.3s ease;
+}
+
+.detail-photo-slide {
+  flex: none;
+  width: 100%;
+  height: 100%;
+}
+
+/* — 縮圖本身是按鈕（點一下開全螢幕放大），reset 掉按鈕預設樣式 — */
+.detail-photo-tap {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.detail-photo-tap img,
+.detail-photo-tap .cmyk {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.detail-photo-dots {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.detail-photo-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-neutral-100) 70%, var(--color-text) 20%);
+}
+
+.detail-photo-dot.is-active {
+  background: var(--color-accent-700);
+}
+
+.detail-photo-single {
+  height: 190px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin: 16px 22px 14px;
+}
+
+/* — 全螢幕放大檢視（PhotoLightbox）：跟其他覆蓋層一樣是 .app-shell 的直接 sibling，
+   z-index 蓋過 bottom sheet（.edit-overlay，30）跟詳情頁（.detail-page，25）— */
+.photo-lightbox {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  background: color-mix(in srgb, var(--color-neutral-900) 92%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.photo-lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 2px;
+}
+
+.photo-lightbox-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.detail-spot-jp {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  margin: 0 0 8px;
+}
+
+.detail-spot-intro {
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0 0 14px;
+}
+
+.detail-spot-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.detail-walk-section {
+  margin-bottom: 16px;
+}
+
+.detail-walk {
+  margin-bottom: 0;
+}
+
+.detail-walk-row {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.detail-walk-min {
+  flex: none;
+  width: 40px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent-700);
+}
+
+.detail-walk-text {
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.detail-food {
+  margin-bottom: 16px;
+}
+
+.detail-food-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12.5px;
+}
+
+.detail-food-name {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  flex: none;
+}
+
+/* 美食推薦店名可點開 Google Maps：維持一般文字外觀，只用小地標圖示提示。 */
+.detail-food-name-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.detail-food-name-link:hover {
+  color: var(--color-accent-2-700);
+}
+
+.detail-food-note {
+  text-align: right;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+.detail-visited-btn {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.detail-note-field {
+  margin-top: 22px;
+}
+
+.detail-note-input {
+  min-height: 70px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.detail-note-links {
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-line;
+  word-break: break-all;
+  margin: 6px 0 0;
+}
+
+.linkify-link {
+  color: var(--color-accent-700);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.detail-sameday-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 0;
+  background: none;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.detail-sameday-row:first-of-type {
+  border-top: none;
+}
+
+.detail-sameday-row.is-dim {
+  opacity: 0.6;
+}
+
+.detail-sameday-time {
+  flex: none;
+  width: 38px;
+  font-size: 13px;
+}
+
+.detail-sameday-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-sameday-caret {
+  flex: none;
+  opacity: 0.3;
+}
+
+.detail-delete-btn {
+  margin: 22px 22px 26px;
+  width: calc(100% - 44px);
+  color: var(--color-accent-2-700);
+}
+
+/* ==========================================================================
+   行程編輯面板（PlanEditSheet）
+   ========================================================================== */
+
+.edit-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: color-mix(in srgb, var(--color-neutral-900) 45%, transparent);
+  display: flex;
+  align-items: flex-end;
+}
+
+.edit-sheet {
+  width: 100%;
+  max-height: 90%;
+  overflow-y: auto;
+  background: var(--color-bg);
+  padding: 18px 22px 26px;
+  border-radius: 6px 6px 0 0;
+  animation: up 0.22s ease-out;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.edit-note-textarea {
+  min-height: 88px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+/* — 面板抬頭：標題 + 關閉鈕、日期列 — */
+.edit-head-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.edit-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.edit-title {
+  font-size: 22px;
+  margin: 0;
+  flex: 1;
+}
+
+.edit-close-btn {
+  font-size: 16px;
+  padding: 0;
+}
+
+/* 代購 toggle：ExpenseSheet 表頭與 MoneyTab 表頭共用同一顆按鈕樣式，用
+   tag-accent-2 同一組 token 呼應明細列表的代購標籤，一眼認得是同一件事。 */
+.daigou-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.daigou-toggle-btn.is-active {
+  background: var(--color-accent-2);
+  border-color: var(--color-accent-2);
+  color: var(--color-bg);
+}
+
+.edit-day-label {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  margin-top: 2px;
+}
+
+/* — 時間 + 項目同一列 — */
+.edit-row {
+  display: flex;
+  gap: 10px;
+}
+
+/* — 日期時間合併欄位（行程日期＋時間，跟行程提醒的「指定日期時間」用同一種原生
+   picker，不分開兩欄）— */
+.edit-datetime-row {
+  display: flex;
+  gap: 10px;
+}
+
+.edit-datetime-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.edit-time-na-toggle {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* — 區段小標（「行程提醒」「類型」）：純文字，不是 .field label — */
+.edit-section-label {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.edit-notify-block,
+.edit-kind-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.edit-notify-btn {
+  align-self: flex-start;
+  margin-top: 6px;
+  font-size: 12.5px;
+  padding: 7px 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.edit-kind-block .edit-kind-chips {
+  margin-top: 6px;
+}
+
+.edit-kind-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.edit-kind-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: 12.5px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.edit-kind-chip.is-selected {
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: var(--color-bg);
+}
+
+.edit-plan-photo {
+  height: 150px;
+  border-radius: var(--radius-md);
+}
+
+.edit-lead-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.edit-lead-chip {
+  padding: 6px 11px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: 12px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.edit-lead-chip.is-selected {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.edit-remind-at-input {
+  margin-top: 10px;
+}
+
+.edit-notify-warning {
+  font-size: 11.5px;
+  color: var(--color-accent-2-700);
+  margin: 8px 0 0;
+}
+
+.edit-save-btn {
+  margin-top: 4px;
+  padding: 11px;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.edit-actions a.btn {
+  flex: 1;
+}
+
+.edit-delete-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-accent-2-700);
+}
+
+/* 記帳的儲存/刪除同一列，9:1 寬度比——刪除縮成純圖示，其他 sheet 的刪除鈕仍是
+   獨立一整列的文字按鈕（見上面 .edit-delete-btn 的其他用法），不共用這個比例。 */
+.expense-save-row {
+  display: flex;
+  gap: 8px;
+  margin-top: var(--space-2);
+}
+
+.expense-save-btn {
+  flex: 9;
+}
+
+.expense-delete-btn {
+  flex: 1;
+}
+
+/* — 連結景點 — */
+.edit-linked-spot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--color-surface);
+  border-radius: 2px;
+}
+
+.edit-linked-spot-name {
+  flex: 1;
+  font-size: 14px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.edit-new-spot-btn {
+  margin-top: 8px;
+  width: 100%;
+}
+
+/* — 面板抬頭下方的說明文字（CatManagerSheet 等）— */
+.edit-hint {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  margin: 6px 0 0;
+}
+
+/* — 新增景點面板：步行路線／美食推薦這類可重複列的簡易編輯器（SpotEditSheet），
+   也給 CatManagerSheet 的「名稱輸入 + 筆數 + 刪除鈕」列共用 — */
+.edit-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.cat-mgr-count {
+  flex: none;
+  font-size: 11px;
+  width: 32px;
+  text-align: right;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+}
+
+/* 美食推薦一筆有兩行（店名+備註+刪除鈕、地址），group 統一管理跟下一筆的間距，
+   內層 .edit-list-row 自己的 margin-bottom 用來分開這兩行。 */
+.edit-list-row-group {
+  margin-bottom: 10px;
+}
+
+.edit-list-row-narrow {
+  flex: none;
+  width: 64px;
+}
+
+.edit-list-row-remove {
+  flex: none;
+  padding: 0 4px;
+  color: var(--color-accent-2-700);
+}
+
+/* ==========================================================================
+   共用：h2 分頁標題 / 說明（景點／行李／記帳三個分頁共用）
+   ========================================================================== */
+
+.spots,
+.pack,
+.money {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  position: relative;
+  padding: 0 22px 24px;
+}
+
+.spots-h2 {
+  font-size: 30px;
+  margin: 18px 0 2px;
+}
+
+.spots-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.spots-header .spots-h2 {
+  flex: 1;
+}
+
+.spots-add-btn {
+  margin-top: 22px;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.spots-sub {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--color-text) 58%, transparent);
+  margin: 0 0 8px;
+}
+
+/* ==========================================================================
+   景點分頁（SpotsTab）
+   ========================================================================== */
+
+.spots-area-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.spots-area-tab {
+  flex: none;
+  border: 1px solid var(--color-divider);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+
+.spots-area-tab.is-selected {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.spots-list {
+  margin-top: 6px;
+}
+
+.spots-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 9%, transparent);
+  cursor: pointer;
+}
+
+.spots-row:first-child {
+  border-top: none;
+}
+
+/* — PhotoUpload 元件（景點照片上傳，共用元件，見 src/components/PhotoUpload.tsx）— */
+.photo-upload {
+  position: relative;
+}
+
+.photo-upload-input {
+  display: none;
+}
+
+.photo-upload-filled {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.photo-upload-filled img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: inherit;
+}
+
+.photo-upload-edit-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+.photo-upload-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px dashed var(--color-divider);
+  border-radius: inherit;
+  background: none;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  font: inherit;
+  font-size: 10px;
+}
+
+.photo-upload-empty:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.spots-thumb {
+  flex: none;
+  width: 88px;
+  height: 64px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.spots-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.spots-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.spots-row-name {
+  font-size: 16px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.spots-row-jp {
+  font-size: 10.5px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+}
+
+.spots-row-teaser {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--color-text) 58%, transparent);
+  margin-top: 3px;
+}
+
+.spots-row-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* ==========================================================================
+   景點詳情頁（SpotDetail）
+   內容同行程資訊頁的景點段落，額外有 .cmyk 大圖與頂部動作列，共用 .detail-* class。
+   ========================================================================== */
+
+.spot-detail-hero {
+  position: relative;
+}
+
+.spot-cmyk {
+  aspect-ratio: 16 / 10;
+}
+
+.spot-detail-back {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  background: var(--color-bg);
+}
+
+.spot-detail-photo,
+.spot-detail-photo .photo-upload-filled {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+}
+
+.spot-detail-photo .photo-upload-filled img {
+  border-radius: 0;
+}
+
+/* 沒有照片時，景點資訊頁不留 hero 占位框，改成內文裡一顆小的「新增照片」按鈕。 */
+.spot-detail-photo-add {
+  display: inline-block;
+  margin: 4px 0 8px;
+}
+
+.spot-detail-photo-add .photo-upload-empty {
+  width: auto;
+  height: auto;
+  flex-direction: row;
+  gap: 6px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  border-radius: var(--radius-md);
+}
+
+.spot-detail-body {
+  padding: 16px 22px 30px;
+}
+
+.spot-detail-area {
+  margin-bottom: 0;
+}
+
+.spot-detail-title {
+  font-size: 29px;
+  margin: 5px 0 0;
+}
+
+.spot-detail-jp {
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  margin: 0;
+}
+
+.spot-detail-intro {
+  margin: 12px 0 4px;
+}
+
+.spot-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 20px;
+}
+
+.spot-detail-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  padding: 6px 12px;
+}
+
+/* ==========================================================================
+   行李分頁（PackTab）
+   ========================================================================== */
+
+.pack-progress {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.pack-progress-value {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.2s ease;
+}
+
+.pack-owner-chips {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 16px;
+}
+
+.pack-cat {
+  margin-bottom: 16px;
+}
+
+.pack-cat-kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  margin-bottom: 4px;
+}
+
+.pack-empty {
+  font-size: 11.5px;
+  font-style: italic;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  margin: 0;
+  padding: 6px 0;
+}
+
+.pack-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+  cursor: pointer;
+}
+
+.pack-item-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.pack-item-name.is-done {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.pack-item-owner {
+  flex: none;
+  font-size: 10px;
+}
+
+.pack-item-edit-btn {
+  flex: none;
+  padding: 4px;
+  color: color-mix(in srgb, var(--color-text) 35%, transparent);
+}
+
+.pack-add {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 9%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pack-cat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pack-new-cat,
+.pack-new-item {
+  display: flex;
+  gap: 8px;
+}
+
+.pack-new-cat .input,
+.pack-new-item .input {
+  flex: 1;
+}
+
+.pack-add-hint {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  margin: 0;
+}
+
+/* ==========================================================================
+   記帳分頁（MoneyTab）
+   ========================================================================== */
+
+.money-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.money-header-row .spots-h2 {
+  flex: 1;
+}
+
+.money-total-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.money-total-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.money-total-kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+.money-total-amount {
+  font-size: 38px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+/* — 雙幣對照：兩欄＋中間分隔線 — */
+.money-dual-currency {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.money-dual-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.money-dual-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 45%, transparent);
+}
+
+.money-dual-value {
+  font-size: 15px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--color-accent-700);
+}
+
+.money-dual-divider {
+  width: 1px;
+  background: var(--color-divider);
+}
+
+.money-rate-field {
+  flex: none;
+  width: 104px;
+}
+
+.money-rate-field label {
+  font-size: 10.5px;
+}
+
+.money-payer-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.money-payer-card {
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border-radius: 2px;
+}
+
+/* 身分數是奇數時，最後一張卡獨占整行（不要落單縮在半格寬）。 */
+.money-payer-card--full {
+  grid-column: 1 / -1;
+}
+
+.money-payer-name {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+.money-payer-amount {
+  font-size: 20px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.money-payer-sub {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  margin-top: 2px;
+}
+
+.money-section-kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.money-cats {
+  margin-top: 20px;
+}
+
+.money-cats-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.money-cats-header .money-section-kicker {
+  flex: 1;
+}
+
+.money-cat-row {
+  padding: 6px 0;
+}
+
+.money-cat-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.money-cat-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.money-cat-amount {
+  font-weight: 600;
+}
+
+.money-cat-pct {
+  flex: none;
+  width: 42px;
+  text-align: right;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+.money-cat-bar {
+  display: flex;
+  height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.money-cat-bar-value {
+  height: 100%;
+}
+
+/* — 分類統計圖例（現金／信用卡雙色說明）— */
+.money-cat-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 10.5px;
+}
+
+.money-cat-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.7;
+}
+
+.money-cat-legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  display: inline-block;
+}
+
+.money-detail-section {
+  margin-top: 22px;
+}
+
+/* — 明細分類頁籤 — */
+.money-exp-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 10px 0 2px;
+}
+
+.money-exp-tab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--color-divider);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+.money-exp-tab.is-selected {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.money-exp-tab-count {
+  opacity: 0.55;
+  font-size: 10.5px;
+}
+
+.money-empty {
+  font-size: 12px;
+  font-style: italic;
+  padding: 14px 0;
+  color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  margin: 0;
+}
+
+.money-list {
+  margin-top: 0;
+}
+
+.money-item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 9%, transparent);
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.money-item-row:first-child {
+  border-top: none;
+}
+
+.money-item-edit-icon {
+  flex: none;
+  align-self: center;
+  color: color-mix(in srgb, var(--color-text) 30%, transparent);
+}
+
+.money-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.money-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.money-item-title {
+  font-size: 14px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.money-item-daigou-tag {
+  font-size: 9px;
+  padding: 1px 6px;
+  flex: none;
+}
+
+.money-item-meta {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  margin-top: 2px;
+}
+
+.money-item-amounts {
+  flex: none;
+  text-align: right;
+}
+
+.money-item-amount {
+  font-size: 15px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.money-item-converted {
+  font-size: 10.5px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  margin-top: 2px;
+}
+
+.money-add-btn {
+  margin-top: 18px;
+}
+
+/* ==========================================================================
+   新增支出面板（ExpenseSheet），沿用 edit-overlay / edit-sheet。
+   ========================================================================== */
+
+.expense-field-row {
+  display: flex;
+  gap: 16px;
+}
+
+.expense-field-row .field {
+  flex: 1;
+}
+
+.expense-cur-chips {
+  display: flex;
+  gap: 8px;
+}
+
+.expense-cur-chip {
+  flex: 1;
+  padding: 8px 0;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: 13px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: center;
+}
+
+.expense-cur-chip.is-selected {
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: var(--color-bg);
+}
+
+.expense-method-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.expense-converted {
+  font-size: 14px;
+  color: var(--color-accent-700);
+  margin: 6px 0 0;
+}
+
+.expense-new-cat-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--color-divider);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.expense-new-cat-btn:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+/* ==========================================================================
+   登入畫面（AuthGate）
+   全螢幕 halftone 主視覺 + 刊頭疊字、標題、密碼欄；密碼通過後換成選身分畫面。
+   z-index 蓋過所有其他覆蓋層。
+   ========================================================================== */
+
+.auth-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  background: var(--color-bg);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  animation: fadein 0.18s;
+}
+
+/* 外層：定位用，不套 filter，理由跟 .itin-hero 一樣（見該處註解）——濾鏡只能套在
+   照片層，遮罩/刊頭另外疊在照片之上，才不會被 contrast(1.15) 提亮出現色差線。 */
+.auth-gate-hero {
+  height: 230px;
+  position: relative;
+  flex: none;
+}
+
+.auth-gate-hero-photo {
+  height: 100%;
+}
+
+.auth-gate-hero img {
+  width: 100%;
+  height: 230px;
+  object-fit: cover;
+  object-position: 50% 40%;
+}
+
+/* 漸層遮罩：疊在照片之上、不受 halftone filter 影響，終點用 var(--color-bg) 跟頁面
+   背景保證一致（不是湊出來的死色碼），主視覺底緣才不會跟下方內容區出現色差線。
+   這版拿掉了原本頂部的地點/日期 pill，改成貼底的日期標題（見 .auth-gate-hero-title），
+   遮罩整體變淡（30%/15% 而非舊版的 55%/20%）——因為不再需要保護頂部 pill 的可讀性，
+   只要底部夠濃、跟頁面背景銜接即可。 */
+.auth-gate-hero-mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-bg) 30%, transparent) 0%,
+    color-mix(in srgb, var(--color-bg) 15%, transparent) 45%,
+    var(--color-bg) 100%
+  );
+}
+
+/* 貼底的日期標題：疊在遮罩之上（DOM 順序在遮罩之後），近白 text-shadow 讓文字在
+   照片上仍然清楚，做法跟 .itin-weather 的天氣文字同一套（見該處註解）。 */
+.auth-gate-hero-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 11px 22px 12px;
+  pointer-events: none;
+}
+
+.auth-gate-hero-kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+  text-shadow: 0 1px 3px color-mix(in srgb, var(--color-neutral-100) 90%, transparent);
+}
+
+.auth-gate-hero-date-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.auth-gate-hero-year {
+  font-size: 40px;
+  margin: 2px 0 0;
+  line-height: 1;
+  color: var(--color-accent-700);
+  text-shadow: 0 2px 4px color-mix(in srgb, var(--color-neutral-100) 90%, transparent);
+}
+
+.auth-gate-hero-range {
+  font-size: 15px;
+  font-family: var(--font-heading);
+  color: var(--color-accent-700);
+  text-shadow: 0 1px 3px color-mix(in srgb, var(--color-neutral-100) 90%, transparent);
+}
+
+.auth-gate-body {
+  padding: 24px 22px 30px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-gate-title {
+  font-size: 38px;
+  margin: 0;
+  line-height: 1.02;
+}
+
+.auth-gate-sub {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-style: italic;
+  color: color-mix(in srgb, var(--color-text) 62%, transparent);
+}
+
+.auth-gate-stage {
+  margin-top: 26px;
+}
+
+.auth-gate-input {
+  font-size: 15px;
+  min-height: 42px;
+}
+
+.auth-gate-error {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-accent-2-700);
+}
+
+.auth-gate-submit {
+  margin-top: 16px;
+  padding: 12px;
+  font-size: 15px;
+}
+
+
+.auth-gate-role-kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.auth-gate-role-hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+}
+
+.auth-gate-role-btn {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--color-divider);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth-gate-role-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.auth-gate-role-icon {
+  font-size: 28px;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  color: var(--color-accent-700);
+}
+
+.auth-gate-role-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-gate-role-name {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 19px;
+}
+
+.auth-gate-role-role-note {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+.auth-gate-role-caret {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: color-mix(in srgb, var(--color-text) 35%, transparent);
+}
+
+/* — 管理身分 — */
+.auth-gate-role-manage-btn {
+  margin-top: 14px;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.auth-gate-role-kicker-danger {
+  color: var(--color-accent-2-700);
+}
+
+.auth-gate-role-edit-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.auth-gate-role-edit-row .input {
+  flex: 1;
+}
+
+.auth-gate-role-del-btn {
+  color: var(--color-accent-2-700);
+}
+
+.auth-gate-role-done-btn {
+  margin-top: 16px;
+}
+
+.auth-gate-role-confirm-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.auth-gate-role-confirm-row .btn {
+  flex: 1;
+}
+
+.auth-gate-role-danger-btn {
+  background: var(--color-accent-2-700);
+  border-color: var(--color-accent-2-700);
+}
+
+/* — 設定頁：右緣滑入的全螢幕頁面，跟 .detail-page/.photo-lightbox 是同一種
+   「.app-shell 直接 sibling + position:absolute;inset:0」全螢幕覆蓋層，z-index 故意
+   蓋過它們（45）——設定頁的開啟手勢已經限定只在沒有其他覆蓋層時才會響應（見
+   App.tsx），這裡的 z-index 只是保險，理論上開啟當下畫面不會同時疊別的東西。 — */
+.settings-page {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: var(--color-bg);
+  overflow-y: auto;
+  padding: 16px 22px 30px;
+}
+
+.settings-header {
+  display: flex;
+  align-items: baseline;
+}
+
+.settings-title {
+  flex: 1;
+  font-size: 26px;
+  margin: 2px 0;
+}
+
+.settings-close-btn {
+  font-size: 16px;
+}
+
+.settings-section {
+  padding-top: 22px;
+  margin-top: 22px;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 9%, transparent);
+}
+
+.settings-section:first-of-type {
+  padding-top: 16px;
+  margin-top: 16px;
+}
+
+.settings-date-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.settings-date-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-date-warning {
+  margin-top: 12px;
+  padding: 11px 12px;
+  background: color-mix(in srgb, var(--color-accent-2) 10%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.settings-date-warning p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.settings-date-warning-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.settings-date-warning-row .btn {
+  flex: 1;
+  font-size: 12.5px;
+}
+
+.settings-date-danger-btn {
+  background: var(--color-accent-2-700);
+  border-color: var(--color-accent-2-700);
+}
+
+.settings-rate-field {
+  width: 140px;
+}
+
+.settings-hero-photo {
+  width: 100%;
+  height: 140px;
+  margin-top: 8px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.settings-hero-photo-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+}
+
+.settings-hotel-latlon-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+}
+
+.settings-role-current {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+}
+
+.settings-role-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.settings-role-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.settings-role-logout {
+  color: var(--color-accent-2-700);
+}
+
+.settings-push-btn {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.settings-push-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-accent-2-700);
+}
+
+.settings-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.settings-add-hotel-btn {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.settings-hotel-empty {
+  font-size: 12px;
+  font-style: italic;
+  padding: 14px 0;
+  color: color-mix(in srgb, var(--color-text) 45%, transparent);
+}
+
+.settings-hotel-row {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+.settings-hotel-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-hotel-row-name {
+  font-size: 14.5px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.settings-hotel-row-days {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  margin-top: 2px;
+}
+
+.settings-hotel-edit {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+
+.settings-hotel-edit-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.settings-hotel-edit-row .btn:not(.settings-hotel-del-btn) {
+  flex: 1;
+}
+
+.settings-hotel-del-btn {
+  flex: none;
+  color: var(--color-accent-2-700);
+}

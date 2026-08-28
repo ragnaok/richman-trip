@@ -1,0 +1,18 @@
+# 通用範本設定——main 本身不對應任何真實行程，只放跑得起來的最小骨架。
+# 每個真實行程開自己的 git 分支（例如 inuyama、okayama）時，把這份檔案換成
+# 該行程真正的 name/database_name/database_id（`wrangler d1 create <trip>` 產生的
+# 真實 id），程式碼（src/、functions/）不用動，見 README「多行程部署」。
+name = "my-trip"
+compatibility_date = "2026-01-01"
+pages_build_output_dir = "dist"
+
+# D1 binding。database_id 換成 `wrangler d1 create <trip>` 產生的真實 id——
+# 本機開發（wrangler pages dev / wrangler d1 execute --local）不會用到這個值
+# （本機模式只認 database_name + --local flag），但雲端 `--remote` 操作與正式
+# 部署一定要是這個真實 id 才能連到正確的資料庫。
+[[d1_databases]]
+binding = "DB"
+database_name = "my-trip"
+database_id = "REPLACE_WITH_REAL_D1_DATABASE_ID"
+
+# Web Push 提醒的 Cron trigger 不放這裡，見 worker-cron/（Pages Functions 不支援 cron）。

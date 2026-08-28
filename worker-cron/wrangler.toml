@@ -1,0 +1,30 @@
+# 獨立的 Cloudflare Worker，每分鐘掃過每趟行程自己的 D1 發 Web Push 提醒。
+# 一支 Worker 共用給同一個 Cloudflare 帳號底下所有用這套模板開的行程（見 src/index.ts
+# 的 TRIPS），不是每複製一份 Pages 專案就多開一支。
+#
+# 之所以獨立而不是掛在 functions/api/*：Pages Functions 不支援 Cron Trigger，
+# scheduled() 是 Workers 專屬功能。部署單位也獨立：`cd worker-cron && wrangler deploy`。
+#
+# 同帳號開新行程要做兩件事：
+# 1. 下面加一組 [[d1_databases]]（binding 用 DB_<行程代號>）
+# 2. src/index.ts 的 TRIPS 陣列加一筆對應項目
+#
+# 跨帳號無法共用：Worker 綁在單一帳號底下，看不到別的帳號的 D1，得各自部署一份。
+name = "my-trip-cron"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+[triggers]
+crons = ["* * * * *"]
+
+# 每趟行程各加一組，binding 對應 src/index.ts 的 TRIPS 陣列，例如：
+# [[d1_databases]]
+# binding = "DB_INUYAMA"
+# database_name = "inuyama"
+# database_id = "REPLACE_WITH_REAL_D1_DATABASE_ID"
+
+# Secrets（`wrangler secret put VAPID_PRIVATE_KEY` 在這個目錄下執行）：
+# VAPID_PRIVATE_KEY — JWK JSON 字串，`npx @pushforge/builder vapid` 產生的那組私鑰。
+# 所有行程共用同一組——VAPID 代表的是「這個 Worker 的身分」，不是每趟行程各自的身分，
+# 跟每個 Pages 專案各自的 VAPID_PUBLIC_KEY（前端訂閱用）要是同一組公私鑰配對，
+# 不要為了「每趟行程分開」而各生一組，那樣訂閱會全部失效。

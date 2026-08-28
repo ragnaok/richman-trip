@@ -1,0 +1,134 @@
+{
+  "NA": "—",
+  "TODAY": "1/1",
+  "hotels": {
+    "hotel1": {
+      "name": "範例飯店",
+      "q": "範例飯店"
+    }
+  },
+  "dayinfo": [
+    {
+      "d": "1/1",
+      "wd": "週三",
+      "hotel": "hotel1",
+      "w": {
+        "i": "ph-cloud-sun",
+        "t": "—° / —°",
+        "x": "—",
+        "h": "範例資料，實際行程請在設定頁填入目的地、日期與住宿"
+      }
+    },
+    {
+      "d": "1/2",
+      "wd": "週四",
+      "hotel": "hotel1",
+      "w": {
+        "i": "ph-cloud-sun",
+        "t": "—° / —°",
+        "x": "—",
+        "h": "範例資料"
+      }
+    }
+  ],
+  "plans": {
+    "1/1": [
+      {
+        "id": 101,
+        "t": "09:00",
+        "title": "範例行程項目",
+        "sub": "說明文字",
+        "k": "s",
+        "q": ""
+      }
+    ],
+    "1/2": [
+      {
+        "id": 201,
+        "t": "09:00",
+        "title": "範例行程項目",
+        "sub": "說明文字",
+        "k": "s",
+        "q": ""
+      }
+    ]
+  },
+  "kind": {
+    "f": [
+      "ph-airplane-tilt",
+      "var(--color-accent-2)",
+      "航班"
+    ],
+    "r": [
+      "ph-train-regional",
+      "var(--color-accent-700)",
+      "電車"
+    ],
+    "c": [
+      "ph-car-profile",
+      "var(--color-neutral-700)",
+      "車"
+    ],
+    "s": [
+      "ph-map-pin-area",
+      "var(--color-text)",
+      "景點"
+    ],
+    "e": [
+      "ph-bowl-food",
+      "var(--color-accent-2-700)",
+      "餐食"
+    ],
+    "h": [
+      "ph-bed",
+      "var(--color-accent-700)",
+      "住宿"
+    ],
+    "p": [
+      "ph-handbag",
+      "var(--color-process-yellow)",
+      "購物"
+    ]
+  },
+  "spots": [],
+  "pack": [
+    {
+      "id": 1,
+      "cat": "證件・電子",
+      "name": "護照 + 影本",
+      "owner": "共同",
+      "done": false
+    }
+  ],
+  "exps": [
+    {
+      "id": 1,
+      "title": "範例花費",
+      "cat": "其他",
+      "cur": "TWD",
+      "amt": 0,
+      "payer": "共同",
+      "method": "cash"
+    }
+  ],
+  "catIcon": {
+    "交通": "ph-train-regional",
+    "食": "ph-bowl-food",
+    "票券": "ph-ticket",
+    "購物": "ph-shopping-bag",
+    "住宿": "ph-bed",
+    "機票": "ph-airplane-tilt",
+    "租車": "ph-car-profile",
+    "其他": "ph-receipt"
+  },
+  "catColor": {
+    "交通": "var(--color-accent)",
+    "食": "var(--color-accent-2)",
+    "票券": "var(--color-accent-700)",
+    "購物": "var(--color-neutral-700)",
+    "住宿": "var(--color-process-yellow)",
+    "機票": "var(--color-accent-2-700)",
+    "租車": "var(--color-neutral-500)",
+    "其他": "var(--color-neutral-400)"
+  }
+}

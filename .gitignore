@@ -1,0 +1,33 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# P8：本機開發用的假密鑰/密碼（wrangler pages dev 自動讀取），不可進版控
+.dev.vars
+.wrangler
+
+# main 是通用範本，真實行程的 D1 備份/種子檔與設計稿只留在各行程分支（見 README）
+/backups
+/seed.sql
+/design
