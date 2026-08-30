@@ -2,6 +2,12 @@
 // （ON CONFLICT … WHERE excluded.updated_at > <table>.updated_at），包在一次
 // env.DB.batch() 交易裡，回傳實際寫入的列供客戶端對帳。
 // 注意 plans 的欄位是 kind，客戶端 PlanItem 用 `k`，這裡負責對映。
+//
+// updated_at 一律用這支 Worker 收到請求當下的 Date.now()，不採信客戶端送來的值：
+// pull.ts 的 since 游標也是伺服器時間，如果 updated_at 改用手機自己的時鐘，「手機點擊
+// 當下」跟「debounce+網路延遲後真正送達」之間的空窗期，會讓這筆的 updated_at 落在
+// 其他裝置早就推進過的 since 之前，之後永遠同步不到（不是單純延遲，是永久漏掉）。
+// 兩邊都用伺服器時鐘就不會有這個落差。
 import type { Env } from './_lib/env'
 
 type Row = Record<string, unknown>
@@ -35,8 +41,9 @@ interface TableSpec {
   columns: string[]
   conflictKeys: string[]
   hasDeleted: boolean
-  /** row（客戶端 op payload）→ 依 columns 順序的 bind 值。 */
-  bind: (row: Row) => unknown[]
+  /** row（客戶端 op payload）、now（伺服器收到請求當下的時間）→ 依 columns 順序的 bind 值。
+   * updated_at 一律用 now，不採信客戶端送來的值——見檔案開頭註解。 */
+  bind: (row: Row, now: number) => unknown[]
 }
 
 const TABLE_SPECS: Record<string, TableSpec> = {
@@ -44,70 +51,70 @@ const TABLE_SPECS: Record<string, TableSpec> = {
     columns: ['id', 'day', 't', 'title', 'sub', 'kind', 'q', 'spot', 'cands', 'drive', 'park', 'notify', 'lead', 'remind_at', 'photo', 'updated_at', 'deleted'],
     conflictKeys: ['id'],
     hasDeleted: true,
-    bind: (r) => [
+    bind: (r, now) => [
       str(r.id), str(r.day), str(r.t), str(r.title), str(r.sub) ?? '', str(r.k ?? r.kind),
       str(r.q) ?? '', str(r.spot), r.cands != null ? JSON.stringify(r.cands) : null,
       str(r.drive), str(r.park), toInt01(r.notify), num(r.lead, 30), str(r.remindAt ?? r.remind_at), str(r.photo),
-      num(r.updated_at), toInt01(r.deleted),
+      now, toInt01(r.deleted),
     ],
   },
   spots_meta: {
     columns: ['id', 'visited', 'note', 'photo', 'updated_at', 'deleted'],
     conflictKeys: ['id'],
     hasDeleted: true,
-    bind: (r) => [str(r.id), toInt01(r.visited), str(r.note) ?? '', str(r.photo), num(r.updated_at), toInt01(r.deleted)],
+    bind: (r, now) => [str(r.id), toInt01(r.visited), str(r.note) ?? '', str(r.photo), now, toInt01(r.deleted)],
   },
   pack_items: {
     columns: ['id', 'cat', 'name', 'owner', 'done', 'updated_at', 'deleted'],
     conflictKeys: ['id'],
     hasDeleted: true,
-    bind: (r) => [str(r.id), str(r.cat), str(r.name), str(r.owner), toInt01(r.done), num(r.updated_at), toInt01(r.deleted)],
+    bind: (r, now) => [str(r.id), str(r.cat), str(r.name), str(r.owner), toInt01(r.done), now, toInt01(r.deleted)],
   },
   expenses: {
     columns: ['id', 'title', 'cat', 'cur', 'amt', 'payer', 'method', 'daigou', 'spent_on', 'updated_at', 'deleted'],
     conflictKeys: ['id'],
     hasDeleted: true,
-    bind: (r) => [
+    bind: (r, now) => [
       str(r.id), str(r.title), str(r.cat), str(r.cur), num(r.amt), str(r.payer), str(r.method), toInt01(r.daigou), str(r.spent_on),
-      num(r.updated_at), toInt01(r.deleted),
+      now, toInt01(r.deleted),
     ],
   },
   cats: {
     columns: ['kind', 'name', 'updated_at', 'deleted'],
     conflictKeys: ['kind', 'name'],
     hasDeleted: true,
-    bind: (r) => [str(r.kind), str(r.name), num(r.updated_at), toInt01(r.deleted)],
+    bind: (r, now) => [str(r.kind), str(r.name), now, toInt01(r.deleted)],
   },
   settings: {
     columns: ['k', 'v', 'updated_at'],
     conflictKeys: ['k'],
     hasDeleted: false,
-    bind: (r) => [str(r.k), str(r.v), num(r.updated_at)],
+    bind: (r, now) => [str(r.k), str(r.v), now],
   },
   spots: {
     columns: ['id', 'name', 'jp', 'area', 'teaser', 'intro', 'hours', 'fee', 'access', 'walk', 'food', 'q', 'updated_at', 'deleted'],
     conflictKeys: ['id'],
     hasDeleted: true,
-    bind: (r) => [
+    bind: (r, now) => [
       str(r.id), str(r.name), str(r.jp) ?? '', str(r.area) ?? '',
       str(r.teaser) ?? '', str(r.intro) ?? '', str(r.hours) ?? '', str(r.fee) ?? '', str(r.access) ?? '',
       r.walk != null ? JSON.stringify(r.walk) : '[]', r.food != null ? JSON.stringify(r.food) : '[]',
-      str(r.q) ?? '', num(r.updated_at), toInt01(r.deleted),
+      str(r.q) ?? '', now, toInt01(r.deleted),
     ],
   },
   members: {
     columns: ['role', 'updated_at', 'deleted'],
     conflictKeys: ['role'],
     hasDeleted: true,
-    bind: (r) => [str(r.role), num(r.updated_at), toInt01(r.deleted)],
+    bind: (r, now) => [str(r.role), now, toInt01(r.deleted)],
   },
   hotels: {
     columns: ['id', 'name', 'q', 'checkin', 'checkout', 'lat', 'lon', 'updated_at', 'deleted'],
     conflictKeys: ['id'],
     hasDeleted: true,
-    bind: (r) => [
+    bind: (r, now) => [
       str(r.id), str(r.name), str(r.q) ?? '', str(r.checkin) ?? '', str(r.checkout) ?? '',
-      numOrNull(r.lat), numOrNull(r.lon), num(r.updated_at), toInt01(r.deleted),
+      numOrNull(r.lat), numOrNull(r.lon), now, toInt01(r.deleted),
     ],
   },
 }
@@ -162,13 +169,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return new Response(JSON.stringify({ written: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
   }
 
+  const now = Date.now()
   const statements = []
   const candidates: Op[] = []
   for (const op of ops) {
     const spec = TABLE_SPECS[op.table]
     if (!spec || !op.row) continue
     const sql = buildUpsertSql(op.table, spec)
-    statements.push(context.env.DB.prepare(sql).bind(...spec.bind(op.row)))
+    statements.push(context.env.DB.prepare(sql).bind(...spec.bind(op.row, now)))
     candidates.push(op)
   }
 

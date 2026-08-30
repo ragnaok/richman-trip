@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Plus } from '@phosphor-icons/react'
 import { useStore, useAllSpots } from '../lib/store'
 import { usePullToRefresh } from '../lib/usePullToRefresh'
+import { pull as syncPull, push as syncPush } from '../lib/sync'
 import PullToRefresh from '../components/PullToRefresh'
 import PhotoUpload from '../components/PhotoUpload'
 import Toast, { useToast } from '../components/Toast'
@@ -27,7 +28,7 @@ export default function SpotsTab() {
 
   const { toast, showToast } = useToast()
   const { containerRef, pull, status } = usePullToRefresh({
-    onRefresh: () => new Promise((resolve) => setTimeout(resolve, 300)),
+    onRefresh: () => syncPull().then(() => syncPush()),
     onDone: () => showToast('已更新'),
   })
 
