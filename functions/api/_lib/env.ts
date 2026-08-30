@@ -11,4 +11,7 @@ export interface Env {
   VAPID_PUBLIC_KEY: string
   // 排程送出（worker-cron/）用同一組私鑰；這裡這份只給 /api/push-test 做即時測試。
   VAPID_PRIVATE_KEY: string
+  // Cloudflare Pages 自動注入，不是 Secret：`wrangler pages deploy` 部署當下依本機
+  // git HEAD 設定。functions/api/version.ts 用來讓前端比對是否有新版本。
+  CF_PAGES_COMMIT_SHA?: string
 }

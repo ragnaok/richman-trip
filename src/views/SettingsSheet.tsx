@@ -12,6 +12,7 @@ import {
   sendTestPush,
 } from '../lib/push'
 import PhotoUpload from '../components/PhotoUpload'
+import { apiFetchJson } from '../lib/api'
 import type { StoredHotel } from '../lib/types'
 
 interface HotelDraft {
@@ -63,6 +64,34 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
     if (!isPushSupported()) return
     getExistingSubscription().then((sub) => setPushEnabled(!!sub))
   }, [])
+
+  // 有沒有新版本：比對本機 bundle 的 __GIT_HASH__（build 當下）跟伺服器現在部署的
+  // commit（/api/version 讀 wrangler 自動注入的 CF_PAGES_COMMIT_SHA）。開設定頁才查一次，
+  // 不用另外排輪詢。
+  const [remoteCommit, setRemoteCommit] = useState<string | null>(null)
+  const [updating, setUpdating] = useState(false)
+  useEffect(() => {
+    apiFetchJson<{ commit: string | null }>('/api/version')
+      .then((res) => setRemoteCommit(res.commit))
+      .catch(() => {})
+  }, [])
+  const hasUpdate = remoteCommit != null && remoteCommit !== __GIT_HASH__
+
+  // 手動觸發更新：解除註冊 SW + 清 Cache Storage 再整頁重載，不用等「重開兩次」讓
+  // autoUpdate 自然生效。只動 SW 快取，session cookie／IndexedDB 都不碰，不用重新登入。
+  async function handleUpdateNow() {
+    setUpdating(true)
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(regs.map((r) => r.unregister()))
+      if (window.caches) {
+        const keys = await caches.keys()
+        await Promise.all(keys.map((k) => caches.delete(k)))
+      }
+    } finally {
+      window.location.reload()
+    }
+  }
 
   async function handleTogglePush() {
     setPushBusy(true)
@@ -448,6 +477,24 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
             <SignOut size={16} weight="duotone" /> 登出
           </button>
         </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="edit-section-label">版本</div>
+        <p className="settings-role-current">
+          目前版本 {__GIT_HASH__}
+          {hasUpdate && <span className="settings-version-badge">有新版本</span>}
+        </p>
+        {hasUpdate && (
+          <button
+            type="button"
+            className="btn btn-block btn-primary settings-push-btn"
+            disabled={updating}
+            onClick={handleUpdateNow}
+          >
+            {updating ? '更新中…' : `更新到 ${remoteCommit}`}
+          </button>
+        )}
       </div>
     </div>
   )
