@@ -11,6 +11,7 @@ import { refreshWeather } from '../lib/weather'
 import { useMasthead } from '../lib/useMasthead'
 import { refreshMasthead } from '../lib/geo'
 import { usePullToRefresh } from '../lib/usePullToRefresh'
+import { pull as syncPull, push as syncPush } from '../lib/sync'
 import PullToRefresh from '../components/PullToRefresh'
 import Toast, { useToast } from '../components/Toast'
 import { DAYINFO, HOTELS, KIND, NA } from '../data/spots'
@@ -50,9 +51,10 @@ export default function ItineraryTab() {
   const nextPlan = dayPlans[nextIndex] ?? dayPlans[dayPlans.length - 1]
 
   const { containerRef, pull, status } = usePullToRefresh({
-    // 重抓天氣與定位刊頭，兩者互不影響，任一失敗都各自走自己的 fallback 鏈。
+    // 重抓天氣與定位刊頭，兩者互不影響，任一失敗都各自走自己的 fallback 鏈；
+    // 順便補一次雲端同步（pull+push），跟其他觸發點（App 開啟、回前景、online、輪詢）一致。
     onRefresh: async () => {
-      await Promise.all([refreshWeather(), refreshMasthead()])
+      await Promise.all([refreshWeather(), refreshMasthead(), syncPull().then(() => syncPush())])
     },
     onDone: () => showToast('已更新 · 天氣與所在位置'),
   })

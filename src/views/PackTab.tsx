@@ -3,6 +3,7 @@ import { CheckSquare, Square, PencilSimple, SlidersHorizontal } from '@phosphor-
 import { useStore, useCatNames, useMemberNames } from '../lib/store'
 import { genId } from '../lib/id'
 import { usePullToRefresh } from '../lib/usePullToRefresh'
+import { pull as syncPull, push as syncPush } from '../lib/sync'
 import PullToRefresh from '../components/PullToRefresh'
 import Toast, { useToast } from '../components/Toast'
 
@@ -22,7 +23,7 @@ export default function PackTab() {
 
   const { toast, showToast } = useToast()
   const { containerRef, pull, status } = usePullToRefresh({
-    onRefresh: () => new Promise((resolve) => setTimeout(resolve, 300)),
+    onRefresh: () => syncPull().then(() => syncPush()),
     onDone: () => showToast('已更新'),
   })
 
