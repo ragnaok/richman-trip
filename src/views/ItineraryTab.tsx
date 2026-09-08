@@ -1,7 +1,7 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { BellRinging, CaretRight, Bed } from '@phosphor-icons/react'
 import { useStore, useTripDayRange, useHotels } from '../lib/store'
-import { sortPlans, formatMastheadDate, todayKey, mdToIso } from '../lib/time'
+import { sortPlans, tkey, formatMastheadDate, todayKey, mdToIso } from '../lib/time'
 import { navUrl } from '../lib/nav'
 import { linkifyText } from '../lib/linkify'
 import { genId } from '../lib/id'
@@ -38,17 +38,40 @@ export default function ItineraryTab() {
   const dayIso = mdToIso(day, tripStart?.slice(0, 4) ?? '2026')
   const storedHotel = hotels.find((h) => h.checkin && h.checkout && h.checkin <= dayIso && dayIso < h.checkout)
   const hotel = storedHotel ?? (knownDayInfo ? HOTELS[knownDayInfo.hotel] : undefined)
-  const realToday = todayKey()
+
+  // 每分鐘 tick 一次，讓「今天」「下一站」「現在幾點」隨真實時間推進——不能只靠同步
+  // 輪詢觸發的重渲染，離線時 sync.ts 的 pull() 會直接 return，不會呼叫 hydrate()。
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+  const realToday = todayKey(now)
+
+  // 跨午夜自動把選中的 day chip 換到新的一天——但只在使用者原本就停在「今天」時才跟著
+  // 換，手動選了別的日期就不要打斷他；換到的新日期要真的在行程範圍內才換，行程已經
+  // 結束就維持現狀（跟 store.ts hydrate() 的 defaultDay 落地判斷一致）。
+  const prevRealTodayRef = useRef(realToday)
+  useEffect(() => {
+    if (prevRealTodayRef.current !== realToday) {
+      if (day === prevRealTodayRef.current && tripDays.some((d) => d.d === realToday)) {
+        setDay(realToday)
+      }
+      prevRealTodayRef.current = realToday
+    }
+  }, [realToday, day, setDay, tripDays])
 
   const dayPlans = useMemo(
     () => sortPlans(plans.filter((p) => p.day === day && p.deleted !== 1)),
     [plans, day],
   )
 
-  // 「下一站」用簡化邏輯：今天顯示第 2 筆、其他日顯示第 1 筆，不做真正的時間比對。
-  // 「今天」以裝置真實日期（realToday）判斷。
-  const nextIndex = day === realToday ? 1 : 0
-  const nextPlan = dayPlans[nextIndex] ?? dayPlans[dayPlans.length - 1]
+  // 「下一站」：今天用現在時間找第一筆還沒到的行程；其他天（過去／未來）維持顯示
+  // 第一筆。今天但所有行程時間都過了 → nextPlan 是 undefined，顯示「今日行程已結束」
+  // （下面 JSX），不再像以前退回最後一筆已過去的行程。
+  const nowKey = tkey(`${now.getHours()}:${now.getMinutes()}`)
+  const nextPlan = day === realToday ? dayPlans.find((p) => tkey(p.t) > nowKey) : dayPlans[0]
+  const todayIsOver = day === realToday && dayPlans.length > 0 && !nextPlan
 
   const { containerRef, pull, status } = usePullToRefresh({
     // 重抓天氣與定位刊頭，兩者互不影響，任一失敗都各自走自己的 fallback 鏈；
@@ -136,6 +159,11 @@ export default function ItineraryTab() {
                 <div className="itin-next-title">{nextPlan.title}</div>
                 {nextPlan.sub && <div className="itin-next-sub">{linkifyText(nextPlan.sub)}</div>}
               </div>
+            </div>
+          ) : todayIsOver ? (
+            <div className="itin-next-empty">
+              <div className="itin-next-title">今日行程已結束</div>
+              <div className="itin-next-sub">明天見！</div>
             </div>
           ) : (
             <div className="itin-next-empty">
