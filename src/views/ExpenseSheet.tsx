@@ -110,11 +110,11 @@ export default function ExpenseSheet() {
         </div>
 
         <div className="expense-field-row">
-          <div className="field" style={{ flex: 7 }}>
+          <div className="field" style={{ flex: 6 }}>
             <label>項目</label>
             <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
-          <div className="field" style={{ flex: 3, minWidth: 0 }}>
+          <div className="field" style={{ flex: 4, minWidth: 0 }}>
             <label>日期</label>
             <input className="input" type="date" value={spentOn} onChange={(e) => setSpentOn(e.target.value)} />
           </div>
