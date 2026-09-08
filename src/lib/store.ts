@@ -5,7 +5,7 @@ import { create } from 'zustand'
 import * as db from './db'
 import { DAYINFO, SPOTS, CAT_ICON } from '../data/spots'
 import { sortPlans, defaultDay, dayRange as computeDayRange } from './time'
-import type { PlanItem, PackItem, Expense, Cat, SpotMeta, Payer, CustomSpot, Spot, Member, StoredHotel } from './types'
+import type { PlanItem, PackItem, Expense, Cat, SpotMeta, Payer, CustomSpot, Spot, Member, StoredHotel, PaymentMethod } from './types'
 import type { OutboxOp } from './db'
 
 // 記帳分類的內建預設值不進 cats 表——使用者「刪除」其中一個時靠 deleted:1 的墓碑列
@@ -36,6 +36,7 @@ interface Entities {
   customSpots: CustomSpot[]
   members: Member[]
   hotels: StoredHotel[]
+  paymentMethods: PaymentMethod[]
 }
 
 interface UiState {
@@ -119,6 +120,9 @@ interface Store {
   deleteMember: (role: string) => void
   upsertHotel: (hotel: Omit<StoredHotel, 'updated_at' | 'deleted'>) => void
   deleteHotel: (id: string) => void
+  addPaymentMethod: (name: string) => void
+  renamePaymentMethod: (from: string, to: string) => void
+  deletePaymentMethod: (name: string) => void
 }
 
 function upsertById<T extends { id: unknown }>(list: T[], row: T): T[] {
@@ -145,6 +149,14 @@ function upsertMemberRow(list: Member[], row: Member): Member[] {
   return next
 }
 
+function upsertPaymentMethodRow(list: PaymentMethod[], row: PaymentMethod): PaymentMethod[] {
+  const idx = list.findIndex((m) => m.name === row.name)
+  if (idx === -1) return [...list, row]
+  const next = [...list]
+  next[idx] = row
+  return next
+}
+
 export const useStore = create<Store>((set, get) => ({
   entities: {
     plans: [],
@@ -156,6 +168,7 @@ export const useStore = create<Store>((set, get) => ({
     customSpots: [],
     members: [],
     hotels: [],
+    paymentMethods: [],
   },
   ui: {
     tab: 'itinerary',
@@ -177,7 +190,7 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async hydrate() {
-    const [plans, packItems, expenses, cats, settingsRows, spotsMetaRows, customSpots, members, hotels] =
+    const [plans, packItems, expenses, cats, settingsRows, spotsMetaRows, customSpots, members, hotels, paymentMethods] =
       await Promise.all([
         db.getAll('plans'),
         db.getAll('pack_items'),
@@ -188,6 +201,7 @@ export const useStore = create<Store>((set, get) => ({
         db.getAll('spots'),
         db.getAll('members'),
         db.getAll('hotels'),
+        db.getAll('payment_methods'),
       ])
 
     const settings: Record<string, string> = { rate: '0.216' }
@@ -218,6 +232,7 @@ export const useStore = create<Store>((set, get) => ({
         customSpots,
         members,
         hotels,
+        paymentMethods,
       },
       ui: days.includes(state.ui.day) ? state.ui : { ...state.ui, day: defaultDay(days) },
     }))
@@ -503,6 +518,50 @@ export const useStore = create<Store>((set, get) => ({
     void db.putRow('hotels', row)
     void enqueue('hotels', row)
   },
+
+  addPaymentMethod: (name) => {
+    const value = name.trim()
+    if (!value || value === '現金' || value === '信用卡') return
+    if (get().entities.paymentMethods.some((m) => m.deleted !== 1 && m.name === value)) return
+    const row: PaymentMethod = { name: value, updated_at: Date.now(), deleted: 0 }
+    set((state) => ({
+      entities: { ...state.entities, paymentMethods: upsertPaymentMethodRow(state.entities.paymentMethods, row) },
+    }))
+    void db.putRow('payment_methods', row)
+    void enqueue('payment_methods', row)
+  },
+
+  // payment_methods 的 primary key 是 name，改名同 renameMember：舊名字寫墓碑 + 建新列，
+  // 並把既有支出的 method 一併改過去。
+  renamePaymentMethod: (from, to) => {
+    const name = to.trim()
+    if (!name || name === from) return
+    const state = get()
+    for (const exp of state.entities.expenses) {
+      if (exp.deleted !== 1 && exp.method === from) get().upsertExpense({ ...exp, method: name })
+    }
+    get().addPaymentMethod(name)
+    const tombstone: PaymentMethod = { name: from, deleted: 1, updated_at: Date.now() }
+    set((s) => ({
+      entities: { ...s.entities, paymentMethods: upsertPaymentMethodRow(s.entities.paymentMethods, tombstone) },
+    }))
+    void db.putRow('payment_methods', tombstone)
+    void enqueue('payment_methods', tombstone)
+  },
+
+  // 刪除付款方式：相關支出改記為現金（method:'cash'），並寫墓碑蓋掉名稱。
+  deletePaymentMethod: (name) => {
+    const state = get()
+    for (const exp of state.entities.expenses) {
+      if (exp.deleted !== 1 && exp.method === name) get().upsertExpense({ ...exp, method: 'cash' })
+    }
+    const tombstone: PaymentMethod = { name, deleted: 1, updated_at: Date.now() }
+    set((s) => ({
+      entities: { ...s.entities, paymentMethods: upsertPaymentMethodRow(s.entities.paymentMethods, tombstone) },
+    }))
+    void db.putRow('payment_methods', tombstone)
+    void enqueue('payment_methods', tombstone)
+  },
 }))
 
 // write-through 之後把變更 enqueue 進同步 outbox，並統一在這裡觸發 debounce 推送，
@@ -556,6 +615,13 @@ export function useCatNames(kind: Cat['kind']): string[] {
 export function useMemberNames(): string[] {
   const members = useStore((s) => s.entities.members)
   return useMemo(() => members.filter((m) => m.deleted !== 1).map((m) => m.role), [members])
+}
+
+/** 自訂付款方式清單（濾掉墓碑，依新增順序）。不含現金/信用卡——那兩個是內建固定值，
+ * 由呼叫端自己拼在前面。 */
+export function usePaymentMethodNames(): string[] {
+  const paymentMethods = useStore((s) => s.entities.paymentMethods)
+  return useMemo(() => paymentMethods.filter((m) => m.deleted !== 1).map((m) => m.name), [paymentMethods])
 }
 
 /** 旅遊日期範圍，由設定頁 tripStart/tripEnd 展開；未設定或不合法時退回種子 DAYINFO。 */

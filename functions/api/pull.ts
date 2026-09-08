@@ -2,7 +2,7 @@
 // 含 deleted=1 的墓碑列，由客戶端自行處理。
 import type { Env } from './_lib/env'
 
-const TABLES = ['plans', 'spots_meta', 'pack_items', 'expenses', 'cats', 'settings', 'spots', 'members', 'hotels'] as const
+const TABLES = ['plans', 'spots_meta', 'pack_items', 'expenses', 'cats', 'settings', 'spots', 'members', 'hotels', 'payment_methods'] as const
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url)

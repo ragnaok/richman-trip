@@ -2,7 +2,7 @@
 // 存 since（同步時間戳）、loggedIn 與天氣/定位快取。
 import { openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction, type StoreNames } from 'idb'
 import seed from '../data/seed.json'
-import type { PlanItem, SpotMeta, PackItem, Expense, Cat, Setting, CustomSpot, Member, StoredHotel } from './types'
+import type { PlanItem, SpotMeta, PackItem, Expense, Cat, Setting, CustomSpot, Member, StoredHotel, PaymentMethod } from './types'
 
 const DB_NAME = 'inuyama-trip'
 // v2 加 `ops` store（同步 outbox，見 lib/sync.ts），並把 id 統一成字串——D1 的 id 是
@@ -13,7 +13,8 @@ const DB_NAME = 'inuyama-trip'
 // v6 加 `hotels`（設定頁「住宿地點」）。
 // v7、v8 清掉舊版灌進 plans/pack_items/expenses 與 hotels 的示範列：程式碼由多趟行程
 //    共用，示範列 id 跟真實 D1 不重疊，pull 只會疊加、永遠不會自然消失。
-const DB_VERSION = 8
+// v9 加 `payment_methods`（記帳自訂付款方式；現金/信用卡是內建值，不進這張表）。
+const DB_VERSION = 9
 
 interface MetaEntry {
   key: string
@@ -23,7 +24,7 @@ interface MetaEntry {
 /** 同步 outbox 的一筆待送 op（README push payload 格式：{table,row}）。autoIncrement key。 */
 export interface OutboxOp {
   opId?: number
-  table: 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels'
+  table: 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels' | 'payment_methods'
   row: Record<string, unknown>
   createdAt: number
 }
@@ -38,6 +39,7 @@ interface InuyamaDB extends DBSchema {
   spots: { key: CustomSpot['id']; value: CustomSpot }
   members: { key: Member['role']; value: Member }
   hotels: { key: StoredHotel['id']; value: StoredHotel }
+  payment_methods: { key: PaymentMethod['name']; value: PaymentMethod }
   meta: { key: string; value: MetaEntry }
   ops: { key: number; value: OutboxOp }
 }
@@ -124,6 +126,10 @@ export function getDB(): Promise<IDBPDatabase<InuyamaDB>> {
             cursor = await cursor.continue()
           }
         }
+
+        if (oldVersion < 9) {
+          db.createObjectStore('payment_methods', { keyPath: 'name' })
+        }
       },
     })
   }
@@ -149,14 +155,14 @@ function seedInitialData(tx: IDBPTransaction<InuyamaDB, StoreNames<InuyamaDB>[],
 
 // --- 泛用讀取／寫入輔助函式，供 store.ts 做 write-through ---
 
-export async function getAll<K extends 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels'>(
+export async function getAll<K extends 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels' | 'payment_methods'>(
   storeName: K,
 ): Promise<InuyamaDB[K]['value'][]> {
   const db = await getDB()
   return db.getAll(storeName)
 }
 
-export async function putRow<K extends 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels'>(
+export async function putRow<K extends 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels' | 'payment_methods'>(
   storeName: K,
   value: InuyamaDB[K]['value'],
 ): Promise<void> {
@@ -164,7 +170,7 @@ export async function putRow<K extends 'plans' | 'spots_meta' | 'pack_items' | '
   await db.put(storeName, value)
 }
 
-export async function deleteRow<K extends 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels'>(
+export async function deleteRow<K extends 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels' | 'payment_methods'>(
   storeName: K,
   key: InuyamaDB[K]['key'],
 ): Promise<void> {

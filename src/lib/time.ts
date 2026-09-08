@@ -17,6 +17,7 @@ export function sortPlans<T extends Pick<PlanItem, 't'>>(plans: T[]): T[] {
 }
 
 const WD_NAMES = ['週日', '週一', '週二', '週三', '週四', '週五', '週六']
+const WD_SHORT = ['日', '一', '二', '三', '四', '五', '六']
 
 // 行程分頁刊頭日期格式，例如 '2026.09.03 週四'。顯示裝置的真實日期，跟選中的
 // day chip 無關——切 chip 只換下面的行程內容。
@@ -66,6 +67,20 @@ export function formatHeroDateRange(startIso: string, endIso: string): { year: s
   const [, me, de] = endIso.split('-')
   if (!ys || !ms || !ds || !me || !de) return null
   return { year: ys, range: `${ms}.${ds} — ${me}.${de}` }
+}
+
+/** 記帳支出日期欄（spent_on）的今天預設值，'YYYY-MM-DD'，不綁行程年份。 */
+export function todayISO(now: Date = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+/** 記帳每日花費／明細列的日期顯示，例如 '9/8（二）'。spent_on 是 'YYYY-MM-DD'，
+ * 不合法時原樣退回，避免整列爆掉。 */
+export function formatExpenseDate(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(`${iso}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return iso
+  return `${d.getMonth() + 1}/${d.getDate()}（${WD_SHORT[d.getDay()]}）`
 }
 
 /** 從 tripStart/tripEnd 展開成逐日的 { d, wd } 清單，欄位名刻意跟 DAYINFO 一致，

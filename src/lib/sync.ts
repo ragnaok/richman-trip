@@ -8,7 +8,7 @@
 import * as db from './db'
 import { apiFetch, apiFetchJson } from './api'
 import { useStore } from './store'
-import type { PlanItem, PackItem, Expense, Cat, SpotMeta, Setting, CustomSpot, StoredHotel } from './types'
+import type { PlanItem, PackItem, Expense, Cat, SpotMeta, Setting, CustomSpot, StoredHotel, PaymentMethod } from './types'
 import type { OutboxOp } from './db'
 
 const DEBOUNCE_MS = 2000
@@ -45,6 +45,7 @@ interface PullResponse {
   spots: Array<Record<string, unknown>>
   members: Array<Record<string, unknown>>
   hotels: Array<Record<string, unknown>>
+  payment_methods: Array<Record<string, unknown>>
 }
 
 function toBool(v: unknown): boolean {
@@ -151,6 +152,10 @@ function rowToMember(r: Record<string, unknown>): { role: string; updated_at: nu
   return { role: String(r.role), updated_at: Number(r.updated_at), deleted: toBool(r.deleted) ? 1 : 0 }
 }
 
+function rowToPaymentMethod(r: Record<string, unknown>): PaymentMethod {
+  return { name: String(r.name), updated_at: Number(r.updated_at), deleted: toBool(r.deleted) ? 1 : 0 }
+}
+
 function rowToHotel(r: Record<string, unknown>): StoredHotel {
   const lat = r.lat == null ? undefined : Number(r.lat)
   const lon = r.lon == null ? undefined : Number(r.lon)
@@ -173,7 +178,7 @@ function rowToHotel(r: Record<string, unknown>): StoredHotel {
  * 比較舊的伺服器列本來就蓋不過去。
  */
 async function upsertIfNewer<T extends { id?: unknown; kind?: unknown; k?: unknown; updated_at: number }>(
-  storeName: 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels',
+  storeName: 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels' | 'payment_methods',
   row: T,
   getKey: (row: T) => unknown,
 ): Promise<void> {
@@ -204,6 +209,7 @@ export async function pull(): Promise<void> {
   for (const r of data.spots) await upsertIfNewer('spots', rowToSpot(r), (x) => x.id)
   for (const r of data.members) await upsertIfNewer('members', rowToMember(r), (x) => x.role)
   for (const r of data.hotels) await upsertIfNewer('hotels', rowToHotel(r), (x) => x.id)
+  for (const r of data.payment_methods) await upsertIfNewer('payment_methods', rowToPaymentMethod(r), (x) => x.name)
 
   await db.setMeta('since', data.server_now)
   await useStore.getState().hydrate()

@@ -1715,7 +1715,9 @@ body {
 .money-cats-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  row-gap: 4px;
   margin-bottom: 4px;
 }
 
@@ -1723,55 +1725,122 @@ body {
   flex: 1;
 }
 
-.money-cat-row {
-  padding: 6px 0;
+/* — 付款方式圖例：現金/信用卡/自訂方式，超過一行就自動換行 — */
+.money-cat-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.money-cat-top {
+/* 一整行：名稱｜長條圖（置中）｜金額｜百分比，四個都是同一個 flex row 的直接
+   子元素——長條圖夾在名稱和金額中間，不是另起一行。分類統計／每日花費共用同一組
+   class（需求：兩區塊樣式要一致）。 */
+.money-cat-row {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12.5px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0 0;
+  width: 100%;
+}
+
+/* — 每日花費列：跟分類統計列共用 .money-cat-row 及其子元素，這裡只補「可點擊」的
+   button reset；被選中日的粗體/透明度變化用 inline style。 */
+.money-daily-row {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* — 每日花費 kicker 旁的 filter 說明小圖示 + popup — */
+.money-daily-kicker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.money-filter-hint-btn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.money-filter-hint-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+}
+
+.money-filter-hint-tip {
+  position: absolute;
+  top: 18px;
+  left: 0;
+  z-index: 5;
+  width: 220px;
+  background: var(--color-text);
+  color: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: 9px 11px;
+  font-size: 11px;
+  letter-spacing: normal;
+  text-transform: none;
+  line-height: 1.5;
+  box-shadow: var(--shadow-md);
 }
 
 .money-cat-name {
+  flex: none;
+  width: 64px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 長條圖本身：flex:1 撐開夾在名稱和金額中間，高度極細（跟設計稿一致），
+   現金／信用卡兩段用 .money-cat-bar-value 疊出來。 */
+.money-cat-bar {
   flex: 1;
   min-width: 0;
-}
-
-.money-cat-amount {
-  font-weight: 600;
-}
-
-.money-cat-pct {
-  flex: none;
-  width: 42px;
-  text-align: right;
-  color: color-mix(in srgb, var(--color-text) 55%, transparent);
-}
-
-.money-cat-bar {
   display: flex;
-  height: 2px;
+  height: 3px;
   border-radius: 1px;
-  background: color-mix(in srgb, var(--color-text) 10%, transparent);
-  margin-top: 4px;
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
   overflow: hidden;
 }
 
 .money-cat-bar-value {
+  display: block;
   height: 100%;
 }
 
-/* — 分類統計圖例（現金／信用卡雙色說明）— */
-.money-cat-legend {
-  display: flex;
-  gap: 12px;
-  margin-top: 6px;
-  font-size: 10.5px;
+.money-cat-amount {
+  flex: none;
+  width: 76px;
+  text-align: right;
+  font-size: 12.5px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
+.money-cat-pct {
+  flex: none;
+  width: 32px;
+  text-align: right;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+/* — 現金／信用卡雙色圖例：分類統計、每日花費 header 共用（跟 kicker 同一行）— */
 .money-cat-legend-item {
+  font-size: 10.5px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1975,6 +2044,140 @@ body {
 
 .expense-new-cat-btn:hover {
   background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+/* — 付款方式：現金／信用卡+caret 下拉，caret 開自訂方式選單 — */
+.expense-method-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.expense-method-cash {
+  flex: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.expense-method-card-group {
+  flex: 6;
+  min-width: 0;
+  display: flex;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.expense-method-card {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 8px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.expense-method-card.is-selected {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.expense-method-caret {
+  flex: none;
+  width: 30px;
+  align-self: stretch;
+  border: 0;
+  border-left: 1px solid var(--color-divider);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.expense-method-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 31;
+}
+
+.expense-method-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 32;
+  width: 180px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+}
+
+.expense-method-menu-item {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.expense-method-menu-item:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+.expense-method-menu-item.is-selected {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.expense-method-menu-divider {
+  height: 1px;
+  background: var(--color-divider);
+  margin: 4px 0;
+}
+
+.expense-method-menu-manage {
+  color: var(--color-accent);
+}
+
+/* — 付款方式管理面板：疊在 ExpenseSheet 之上，z-index 要更高 — */
+.expense-method-mgr-overlay {
+  z-index: 31;
+}
+
+.method-mgr-builtin-row {
+  opacity: 0.55;
+  font-size: 13.5px;
+}
+
+.method-mgr-builtin-row span {
+  flex: 1;
 }
 
 /* ==========================================================================
