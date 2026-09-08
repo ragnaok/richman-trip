@@ -193,8 +193,11 @@ export const useStore = create<Store>((set, get) => ({
     const settings: Record<string, string> = { rate: '0.216' }
     for (const row of settingsRows) settings[row.k] = row.v
 
+    // 跳過墓碑：entities.spotsMeta 只給 UI 讀已去過/備註/照片，沒有任何地方需要看到
+    // 已刪除的舊值（目前也沒有 deleteSpotMeta 這個 action，理論上不會產生墓碑，但
+    // 保留這個防護，跟其他表在讀取端過濾 deleted 的慣例一致）。
     const spotsMeta: Record<string, SpotMeta> = {}
-    for (const row of spotsMetaRows) spotsMeta[row.id] = row
+    for (const row of spotsMetaRows) if (row.deleted !== 1) spotsMeta[row.id] = row
 
     // ui.day 的初始值是模組載入時用種子 DAYINFO 算的，可能落在這趟行程的
     // tripStart/tripEnd 之外。讀到真正的範圍後只在超出範圍時修正，範圍內不動，
