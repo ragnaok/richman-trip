@@ -117,6 +117,12 @@ const TABLE_SPECS: Record<string, TableSpec> = {
       numOrNull(r.lat), numOrNull(r.lon), now, toInt01(r.deleted),
     ],
   },
+  payment_methods: {
+    columns: ['name', 'updated_at', 'deleted'],
+    conflictKeys: ['name'],
+    hasDeleted: true,
+    bind: (r, now) => [str(r.name), now, toInt01(r.deleted)],
+  },
 }
 
 function buildUpsertSql(table: string, spec: TableSpec): string {

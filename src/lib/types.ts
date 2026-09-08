@@ -85,7 +85,8 @@ export interface PackItem {
 
 export type Currency = 'JPY' | 'TWD'
 export type Payer = string
-export type PayMethod = 'cash' | 'card'
+// 'cash'/'card' 是內建固定值，其餘字串是使用者自訂方式（見 PaymentMethod）。
+export type PayMethod = string
 
 /** 身分（D1 members 表）。role 是自然鍵，updated_at/deleted 同 cats 走墓碑刪除，
  * 好讓「改名／刪除」能跨裝置同步。 */
@@ -104,7 +105,16 @@ export interface Expense {
   payer: Payer
   method?: PayMethod // 沒有值視同 'cash'（舊資料相容，見 lib/money.ts payMethod()）
   daigou?: boolean // 代購：不計入「不含代購」的統計，明細一律照常顯示
-  spent_on?: string // 日期 '9/3'
+  spent_on?: string // 日期 'YYYY-MM-DD'，不綁行程年份、不限旅遊區間
+  updated_at: number
+  deleted: 0 | 1
+}
+
+/** 使用者自訂付款方式（D1 payment_methods 表）。現金／信用卡是內建固定值，不進這張
+ * 表也不可改名/刪除；這裡只存「現金/信用卡以外」的自訂方式，name 是自然鍵，改名/
+ * 刪除走跟 members 一樣的墓碑機制。 */
+export interface PaymentMethod {
+  name: string
   updated_at: number
   deleted: 0 | 1
 }

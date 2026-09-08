@@ -1,15 +1,12 @@
 import { useState } from 'react'
-import { Plus, X, Trash, Money, CreditCard, CheckSquare, Square } from '@phosphor-icons/react'
-import { useStore, useCatNames, useMemberNames } from '../lib/store'
+import { Plus, X, Trash, Money, CreditCard, CaretDown, SlidersHorizontal, CheckSquare, Square } from '@phosphor-icons/react'
+import { useStore, useCatNames, useMemberNames, usePaymentMethodNames } from '../lib/store'
 import { genId } from '../lib/id'
-import { rateNum, formatTWD, payMethod, PAY_METHOD_LABEL } from '../lib/money'
+import { rateNum, formatTWD, payMethod, truncateMethodLabel } from '../lib/money'
+import { todayISO } from '../lib/time'
 import Toast, { useToast } from '../components/Toast'
+import PaymentMethodManagerSheet from './PaymentMethodManagerSheet'
 import type { Currency, Payer, PayMethod } from '../lib/types'
-
-const METHOD_OPTS: Array<{ key: PayMethod; Icon: typeof Money }> = [
-  { key: 'cash', Icon: Money },
-  { key: 'card', Icon: CreditCard },
-]
 
 /**
  * 新增／編輯支出 bottom sheet，樣式沿用 PlanEditSheet 的 edit-overlay / edit-sheet 慣例。
@@ -28,12 +25,14 @@ export default function ExpenseSheet() {
   const { toast, showToast } = useToast()
   const moneyCats = useCatNames('money')
   const memberNames = useMemberNames()
+  const paymentMethods = usePaymentMethodNames()
   const currentRole = useStore((s) => s.ui.auth.role)
 
   const editing = editingId != null ? expenses.find((e) => e.id === editingId) : undefined
   const isNew = !editing
 
   const [title, setTitle] = useState(editing?.title ?? '')
+  const [spentOn, setSpentOn] = useState(editing?.spent_on ?? todayISO())
   const [cur, setCur] = useState<Currency>(editing?.cur ?? 'JPY')
   const [amt, setAmt] = useState(editing ? String(editing.amt) : '')
   const [cat, setCat] = useState(editing?.cat ?? moneyCats[0])
@@ -42,10 +41,13 @@ export default function ExpenseSheet() {
   const [daigou, setDaigou] = useState(editing?.daigou ?? false)
   const [showNewCat, setShowNewCat] = useState(false)
   const [newCatName, setNewCatName] = useState('')
+  const [methodMenuOpen, setMethodMenuOpen] = useState(false)
+  const [methodMgrOpen, setMethodMgrOpen] = useState(false)
 
   const rate = rateNum(rateStr)
   const amtNum = Number(amt)
   const validAmt = Number.isFinite(amtNum) && amtNum > 0
+  const methodIsCustom = method !== 'cash' && method !== 'card'
 
   const close = () => closeAddExpense()
 
@@ -69,7 +71,7 @@ export default function ExpenseSheet() {
       payer,
       method,
       daigou,
-      spent_on: editing?.spent_on,
+      spent_on: spentOn,
     })
     showToast(isNew ? `記一筆 · ${title.trim()}` : `已更新 · ${title.trim()}`)
     close()
@@ -107,9 +109,15 @@ export default function ExpenseSheet() {
           </button>
         </div>
 
-        <div className="field">
-          <label>項目</label>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <div className="expense-field-row">
+          <div className="field" style={{ flex: 7 }}>
+            <label>項目</label>
+            <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="field" style={{ flex: 3, minWidth: 0 }}>
+            <label>日期</label>
+            <input className="input" type="date" value={spentOn} onChange={(e) => setSpentOn(e.target.value)} />
+          </div>
         </div>
 
         <div className="expense-field-row">
@@ -135,18 +143,84 @@ export default function ExpenseSheet() {
 
           <div className="field">
             <label>付款方式</label>
-            <div className="expense-cur-chips">
-              {METHOD_OPTS.map(({ key, Icon }) => (
+            <div className="expense-method-field">
+              <button
+                type="button"
+                className={`expense-cur-chip expense-method-cash${method === 'cash' ? ' is-selected' : ''}`}
+                onClick={() => {
+                  setMethod('cash')
+                  setMethodMenuOpen(false)
+                }}
+              >
+                <Money size={15} weight="duotone" />
+                現金
+              </button>
+              <div className="expense-method-card-group">
                 <button
-                  key={key}
                   type="button"
-                  className={`expense-cur-chip expense-method-chip${method === key ? ' is-selected' : ''}`}
-                  onClick={() => setMethod(key)}
+                  className={`expense-method-card${method !== 'cash' ? ' is-selected' : ''}`}
+                  onClick={() => {
+                    setMethod('card')
+                    setMethodMenuOpen(false)
+                  }}
                 >
-                  <Icon size={15} weight="duotone" />
-                  {PAY_METHOD_LABEL[key]}
+                  <CreditCard size={15} weight="duotone" />
+                  {methodIsCustom ? truncateMethodLabel(method) : '信用卡'}
                 </button>
-              ))}
+                <button
+                  type="button"
+                  className="expense-method-caret"
+                  aria-label="選擇其他付款方式"
+                  onClick={() => setMethodMenuOpen(!methodMenuOpen)}
+                >
+                  <CaretDown size={12} weight="bold" />
+                </button>
+              </div>
+
+              {methodMenuOpen && (
+                <>
+                  <div className="expense-method-menu-backdrop" onClick={() => setMethodMenuOpen(false)} />
+                  <div className="expense-method-menu">
+                    {methodIsCustom && (
+                      <button
+                        type="button"
+                        className="expense-method-menu-item"
+                        onClick={() => {
+                          setMethod('card')
+                          setMethodMenuOpen(false)
+                        }}
+                      >
+                        信用卡
+                      </button>
+                    )}
+                    {paymentMethods.map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        className={`expense-method-menu-item${method === m ? ' is-selected' : ''}`}
+                        onClick={() => {
+                          setMethod(m)
+                          setMethodMenuOpen(false)
+                        }}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                    {(paymentMethods.length > 0 || methodIsCustom) && <div className="expense-method-menu-divider" />}
+                    <button
+                      type="button"
+                      className="expense-method-menu-item expense-method-menu-manage"
+                      onClick={() => {
+                        setMethodMenuOpen(false)
+                        setMethodMgrOpen(true)
+                      }}
+                    >
+                      <SlidersHorizontal size={13} weight="duotone" />
+                      管理
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -240,6 +314,8 @@ export default function ExpenseSheet() {
           )}
         </div>
       </div>
+
+      {methodMgrOpen && <PaymentMethodManagerSheet onClose={() => setMethodMgrOpen(false)} />}
 
       {toast && <Toast message={toast.message} />}
     </div>
