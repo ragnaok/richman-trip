@@ -33,6 +33,7 @@ export default function MoneyTab() {
   const [expDate, setExpDate] = useState<string>(ALL_FILTER)
   const [showDaigou, setShowDaigou] = useState(false)
   const [dailyHintOpen, setDailyHintOpen] = useState(false)
+  const [dailyExpanded, setDailyExpanded] = useState(false)
 
   const { toast, showToast } = useToast()
   const { containerRef, pull, status } = usePullToRefresh({
@@ -95,7 +96,8 @@ export default function MoneyTab() {
       .sort((a, b) => b[1].sum - a[1].sum)
   }, [effItems, rate])
 
-  // 每日花費：不限旅遊區間，直接列出所有有記帳的日期（依 dayBase，不吃 expDate）。
+  // 每日花費：不限旅遊區間，直接列出所有有記帳的日期（依 dayBase，不吃 expDate），
+  // 最新日期排最前面。
   const dailyTotals = useMemo(() => {
     const totals = new Map<string, { sum: number; byMethod: Record<string, number> }>()
     for (const e of dayBase) {
@@ -109,9 +111,14 @@ export default function MoneyTab() {
     }
     return [...totals.entries()]
       .filter(([, v]) => v.sum > 0)
-      .sort((a, b) => a[0].localeCompare(b[0]))
+      .sort((a, b) => b[0].localeCompare(a[0]))
   }, [dayBase, rate])
   const dailyGrandTotal = dailyTotals.reduce((sum, [, v]) => sum + v.sum, 0)
+  // 長條圖長度依單日金額佔「金額最高的那天」的比例（不是佔全部日期總和），
+  // 花費最多的一天長條滿版，其餘依比例縮短，方便跨日比較。
+  const dailyMax = Math.max(1, ...dailyTotals.map(([, v]) => v.sum))
+  // 預設只顯示最新兩天，超過兩天才出現「顯示更多／更少」切換。
+  const visibleDailyTotals = dailyExpanded ? dailyTotals : dailyTotals.slice(0, 2)
 
   // 明細分類頁籤：「全部」+ 只列出有支出的分類（各帶筆數），只影響明細列表。
   const expTabs = useMemo(() => {
@@ -227,8 +234,9 @@ export default function MoneyTab() {
               ))}
             </div>
           </div>
-          {dailyTotals.map(([day, { sum, byMethod }]) => {
+          {visibleDailyTotals.map(([day, { sum, byMethod }]) => {
             const pct = dailyGrandTotal > 0 ? (sum / dailyGrandTotal) * 100 : 0
+            const barPct = (sum / dailyMax) * 100
             const isSelected = expDate === day
             return (
               <button
@@ -244,22 +252,33 @@ export default function MoneyTab() {
                   {formatExpenseDate(day)}
                 </span>
                 <span className="money-cat-bar" style={{ opacity: isSelected ? 1 : 0.85 }}>
-                  {methods.map((m, i) => (
-                    <span
-                      key={m}
-                      className="money-cat-bar-value"
-                      style={{
-                        width: `${sum > 0 ? ((byMethod[m] ?? 0) / sum) * 100 : 0}%`,
-                        background: methodColor('var(--color-neutral-800)', i, methods.length),
-                      }}
-                    />
-                  ))}
+                  <span className="money-cat-bar-fill" style={{ width: `${barPct}%` }}>
+                    {methods.map((m, i) => (
+                      <span
+                        key={m}
+                        className="money-cat-bar-value"
+                        style={{
+                          width: `${sum > 0 ? ((byMethod[m] ?? 0) / sum) * 100 : 0}%`,
+                          background: methodColor('var(--color-neutral-800)', i, methods.length),
+                        }}
+                      />
+                    ))}
+                  </span>
                 </span>
                 <span className="money-cat-amount">{formatTWD(sum)}</span>
                 <span className="money-cat-pct">{pct.toFixed(0)}%</span>
               </button>
             )
           })}
+          {dailyTotals.length > 2 && (
+            <button
+              type="button"
+              className="money-daily-toggle"
+              onClick={() => setDailyExpanded(!dailyExpanded)}
+            >
+              {dailyExpanded ? '顯示更少' : '顯示更多'}
+            </button>
+          )}
         </div>
       )}
 
@@ -285,16 +304,18 @@ export default function MoneyTab() {
             <div key={cat} className="money-cat-row">
               <span className="money-cat-name">{cat}</span>
               <span className="money-cat-bar">
-                {methods.map((m, i) => (
-                  <span
-                    key={m}
-                    className="money-cat-bar-value"
-                    style={{
-                      width: `${sum > 0 ? ((byMethod[m] ?? 0) / sum) * 100 : 0}%`,
-                      background: methodColor(color, i, methods.length),
-                    }}
-                  />
-                ))}
+                <span className="money-cat-bar-fill" style={{ width: `${pct}%` }}>
+                  {methods.map((m, i) => (
+                    <span
+                      key={m}
+                      className="money-cat-bar-value"
+                      style={{
+                        width: `${sum > 0 ? ((byMethod[m] ?? 0) / sum) * 100 : 0}%`,
+                        background: methodColor(color, i, methods.length),
+                      }}
+                    />
+                  ))}
+                </span>
               </span>
               <span className="money-cat-amount">{formatTWD(sum)}</span>
               <span className="money-cat-pct">{pct.toFixed(0)}%</span>
