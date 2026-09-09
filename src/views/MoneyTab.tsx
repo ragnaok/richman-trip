@@ -260,10 +260,11 @@ export default function MoneyTab() {
           {visibleDailyTotals.map(([day, { sum, byMethod }]) => {
             const pct = dailyGrandTotal > 0 ? (sum / dailyGrandTotal) * 100 : 0
             const isSelected = expDate === day
-            // 選了某一天之後，其餘天數除了維持原本的淡出，還要整列變灰階，凸顯
-            // 選中的那天——只有實際有選日期時才生效，沒有篩選時大家都是原本的
-            // 淡出樣式，不要整排都變灰。
+            // 選了某一天之後，其餘天數的文字＋長條圖除了變灰階，還要再淡化
+            // （opacity 降到 0.4，比預設的 0.85 更淡），凸顯選中的那天——只有實際
+            // 有選日期時才生效，沒有篩選時大家都是原本的淡出樣式，不要整排都變灰。
             const isOtherSelected = expDate !== ALL_FILTER && !isSelected
+            const dimOpacity = isSelected ? 1 : isOtherSelected ? 0.4 : 0.85
             return (
               <button
                 key={day}
@@ -274,11 +275,11 @@ export default function MoneyTab() {
               >
                 <span
                   className="money-cat-name"
-                  style={{ fontWeight: isSelected ? 600 : 400, opacity: isSelected ? 1 : 0.85 }}
+                  style={{ fontWeight: isSelected ? 600 : 400, opacity: dimOpacity }}
                 >
                   {formatExpenseDate(day)}
                 </span>
-                <span className="money-cat-bar" style={{ opacity: isSelected ? 1 : 0.85 }}>
+                <span className="money-cat-bar" style={{ opacity: dimOpacity }}>
                   <span className="money-cat-bar-fill" style={{ width: `${pct}%` }}>
                     {methods.map((m, i) => (
                       <span
