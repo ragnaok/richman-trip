@@ -104,7 +104,9 @@ export default function MoneyTab() {
   }, [effItems, rate])
 
   // 每日花費：不限旅遊區間，直接列出所有有記帳的日期（依 dayBase，不吃 expDate），
-  // 最新日期排最前面。
+  // 最新日期排最前面。dayBase 有吃 expMethod，篩選成單一付款方式時天數常常只剩
+  // 1（尤其新加的自訂方式，可能只有一兩筆），這種情況下方渲染要放行顯示（見下方
+  // JSX 的顯示條件），不能套用「只有一天就整塊隱藏」那條只給預設檢視用的規則。
   const dailyTotals = useMemo(() => {
     const totals = new Map<string, { sum: number; byMethod: Record<string, number> }>()
     for (const e of dayBase) {
@@ -231,7 +233,7 @@ export default function MoneyTab() {
         ＋ 新增支出
       </button>
 
-      {dailyTotals.length > 1 && (
+      {dailyTotals.length > 0 && (dailyTotals.length > 1 || expMethod !== ALL_FILTER) && (
         <div className="money-cats">
           <div className="money-cats-header">
             <div className="money-section-kicker money-daily-kicker">
