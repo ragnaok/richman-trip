@@ -1803,8 +1803,9 @@ body {
   white-space: nowrap;
 }
 
-/* 長條圖本身：flex:1 撐開夾在名稱和金額中間，高度極細（跟設計稿一致），
-   現金／信用卡兩段用 .money-cat-bar-value 疊出來。 */
+/* 長條圖本身：flex:1 撐開夾在名稱和金額中間，高度極細（跟設計稿一致）。這是「軌道」，
+   永遠滿版、淡色背景；實際長度由 .money-cat-bar-fill 依百分比決定寬度，付款方式
+   （現金／信用卡／自訂方式）再依各自佔比切成 .money-cat-bar-value 幾段疊在 fill 裡。 */
 .money-cat-bar {
   flex: 1;
   min-width: 0;
@@ -1815,9 +1816,32 @@ body {
   overflow: hidden;
 }
 
+.money-cat-bar-fill {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
 .money-cat-bar-value {
   display: block;
   height: 100%;
+}
+
+/* — 每日花費「顯示更多／更少」：預設只列最新兩天，超過才出現 — */
+.money-daily-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 6px 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .money-cat-amount {
