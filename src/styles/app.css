@@ -1714,22 +1714,30 @@ body {
 
 .money-cats-header {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 8px;
-  row-gap: 4px;
   margin-bottom: 4px;
 }
 
+/* kicker（「分類統計（台幣）」「每日花費」）固定不縮不換行——付款方式一多，圖例
+   會被壓縮換行（見 .money-cat-legend），但標題本身永遠維持一行，不會被擠成兩行。
+   padding-top 是跟圖例（行高略高於 kicker 文字）在 flex-start 對齊下的視覺微調。 */
 .money-cats-header .money-section-kicker {
-  flex: 1;
+  flex: none;
+  white-space: nowrap;
+  padding-top: 1px;
 }
 
-/* — 付款方式圖例：現金/信用卡/自訂方式，超過一行就自動換行 — */
+/* — 付款方式圖例：現金/信用卡/自訂方式。跟 kicker 平分同一行，付款方式太多時
+   自動換行，靠右對齊（含換行後的每一行）——kicker 固定在左邊，圖例才需要主動
+   靠右，不然換行後會貼著 kicker 左邊。 */
 .money-cat-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 6px 10px;
+  min-width: 0;
 }
 
 /* 一整行：名稱｜長條圖（置中）｜金額｜百分比，四個都是同一個 flex row 的直接
@@ -1791,6 +1799,7 @@ body {
   font-size: 11px;
   letter-spacing: normal;
   text-transform: none;
+  white-space: normal;
   line-height: 1.5;
   box-shadow: var(--shadow-md);
 }
@@ -1863,13 +1872,27 @@ body {
   color: color-mix(in srgb, var(--color-text) 55%, transparent);
 }
 
-/* — 現金／信用卡雙色圖例：分類統計、每日花費 header 共用（跟 kicker 同一行）— */
+/* — 付款方式圖例：分類統計、每日花費 header 共用（跟 kicker 同一行）。是可點的
+   button（點了整頁篩選成該付款方式），不是純裝飾的 span，要重置成 button reset，
+   顏色也要明講 color:inherit——button 沒設 color 在 iOS Safari 上會吃到系統預設的
+   偏藍色（跟 .money-daily-row 同一個坑）。選中狀態加粗；未選中但有篩選中時的
+   淡出用 inline style（依 expMethod 動態算），這裡只顧靜態樣式。 */
 .money-cat-legend-item {
-  font-size: 10.5px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
-  opacity: 0.7;
+  border: 0;
+  background: transparent;
+  padding: 2px 1px;
+  margin: 0;
+  font: inherit;
+  font-size: 10.5px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.money-cat-legend-item.is-selected {
+  font-weight: 600;
 }
 
 .money-cat-legend-swatch {

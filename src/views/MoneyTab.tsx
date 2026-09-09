@@ -17,9 +17,10 @@ const ALL_FILTER = '全部'
  * 區塊順序：總額 → 各人已付卡 → 新增支出按鈕 → 每日花費 → 分類統計 → 明細；新增支出
  * 刻意放在上面，不用每次捲到頁尾。
  *
- * expDate（點某一天篩選）跟 showDaigou 一樣會影響 effItems，進而讓總額／雙幣對照／
- * 已付卡／分類統計整頁一起篩選（需求：點一天＝整頁篩選那天，再點一次取消）；
- * expFilter（明細分類頁籤）只影響明細列表，兩者是 AND 條件。
+ * expDate（點每日花費某一天）、expMethod（點付款方式圖例）都跟 showDaigou 一樣
+ * 會影響 effItems，進而讓總額／雙幣對照／已付卡／分類統計整頁一起篩選（點一下套用，
+ * 再點同一個取消）；expFilter（明細分類頁籤）只影響明細列表。這幾個篩選彼此是
+ * AND 條件，可以疊加（例如篩某一天＋某種付款方式）。
  */
 export default function MoneyTab() {
   const expenses = useStore((s) => s.entities.expenses)
@@ -31,6 +32,7 @@ export default function MoneyTab() {
 
   const [expFilter, setExpFilter] = useState<string>(ALL_FILTER)
   const [expDate, setExpDate] = useState<string>(ALL_FILTER)
+  const [expMethod, setExpMethod] = useState<string>(ALL_FILTER)
   const [showDaigou, setShowDaigou] = useState(false)
   const [dailyHintOpen, setDailyHintOpen] = useState(false)
   const [dailyExpanded, setDailyExpanded] = useState(false)
@@ -47,10 +49,14 @@ export default function MoneyTab() {
     [expenses],
   )
 
-  // 含代購開關 + 選中的那天篩選：兩者一起決定總額／雙幣對照／已付卡／分類統計。
-  // 每日花費列表本身用 dayBase（只吃代購開關，不吃 expDate）——要讓使用者一直看得
-  // 到所有日期可以點，選中不該讓自己從列表消失。
-  const dayBase = useMemo(() => (showDaigou ? items : items.filter((e) => !e.daigou)), [items, showDaigou])
+  // 含代購開關 + 選中的付款方式：兩者一起決定 dayBase，effItems 再疊上選中的那天。
+  // 每日花費列表本身用 dayBase（不吃 expDate，只吃代購開關／付款方式篩選）——要讓
+  // 使用者一直看得到所有日期可以點，選中某一天不該讓自己從列表消失；付款方式篩選則
+  // 要讓每日花費的金額跟著篩選結果變（篩「信用卡」時看到的是每天刷卡花了多少）。
+  const dayBase = useMemo(() => {
+    const base = showDaigou ? items : items.filter((e) => !e.daigou)
+    return expMethod === ALL_FILTER ? base : base.filter((e) => payMethod(e) === expMethod)
+  }, [items, showDaigou, expMethod])
   const effItems = useMemo(
     () => (expDate === ALL_FILTER ? dayBase : dayBase.filter((e) => e.spent_on === expDate)),
     [dayBase, expDate],
@@ -128,11 +134,38 @@ export default function MoneyTab() {
   }, [items])
 
   const filteredItems = items.filter(
-    (e) => (expFilter === ALL_FILTER || e.cat === expFilter) && (expDate === ALL_FILTER || e.spent_on === expDate),
+    (e) =>
+      (expFilter === ALL_FILTER || e.cat === expFilter) &&
+      (expDate === ALL_FILTER || e.spent_on === expDate) &&
+      (expMethod === ALL_FILTER || payMethod(e) === expMethod),
   )
-  const expEmpty = filteredItems.length === 0 && (expFilter !== ALL_FILTER || expDate !== ALL_FILTER)
+  const expEmpty =
+    filteredItems.length === 0 && (expFilter !== ALL_FILTER || expDate !== ALL_FILTER || expMethod !== ALL_FILTER)
 
   const toggleExpDate = (day: string) => setExpDate((cur) => (cur === day ? ALL_FILTER : day))
+  const toggleExpMethod = (m: string) => setExpMethod((cur) => (cur === m ? ALL_FILTER : m))
+
+  // 付款方式圖例：每日花費、分類統計 header 都會渲染一份，點了會整頁篩選成該付款
+  // 方式（再點同一個取消），兩處共用同一個 expMethod 狀態，畫面上會同步反白。
+  const renderMethodLegend = () => (
+    <div className="money-cat-legend">
+      {methods.map((m, i) => {
+        const isSelected = expMethod === m
+        return (
+          <button
+            key={m}
+            type="button"
+            className={`money-cat-legend-item${isSelected ? ' is-selected' : ''}`}
+            style={{ opacity: expMethod === ALL_FILTER || isSelected ? 1 : 0.4 }}
+            onClick={() => toggleExpMethod(m)}
+          >
+            <span className="money-cat-legend-swatch" style={{ background: methodColor(i) }} />
+            {methodLabel(m)}
+          </button>
+        )
+      })}
+    </div>
+  )
 
   return (
     <div className="money" ref={containerRef}>
@@ -215,22 +248,12 @@ export default function MoneyTab() {
                 <>
                   <div className="money-filter-hint-backdrop" onClick={() => setDailyHintOpen(false)} />
                   <div className="money-filter-hint-tip">
-                    點一天可篩選下方明細；再點一次同一天可取消篩選，恢復顯示全部。
+                    點一天可篩選下方明細；點右邊的付款方式也可以篩選；再點一次同一個可取消篩選，恢復顯示全部。
                   </div>
                 </>
               )}
             </div>
-            <div className="money-cat-legend">
-              {methods.map((m, i) => (
-                <span key={m} className="money-cat-legend-item">
-                  <span
-                    className="money-cat-legend-swatch"
-                    style={{ background: methodColor(i) }}
-                  />
-                  {methodLabel(m)}
-                </span>
-              ))}
-            </div>
+            {renderMethodLegend()}
           </div>
           {visibleDailyTotals.map(([day, { sum, byMethod }]) => {
             const pct = dailyGrandTotal > 0 ? (sum / dailyGrandTotal) * 100 : 0
@@ -283,17 +306,7 @@ export default function MoneyTab() {
       <div className="money-cats">
         <div className="money-cats-header">
           <div className="money-section-kicker">分類統計（台幣）</div>
-          <div className="money-cat-legend">
-            {methods.map((m, i) => (
-              <span key={m} className="money-cat-legend-item">
-                <span
-                  className="money-cat-legend-swatch"
-                  style={{ background: methodColor(i) }}
-                />
-                {methodLabel(m)}
-              </span>
-            ))}
-          </div>
+          {renderMethodLegend()}
         </div>
         {catTotals.map(([cat, { sum, byMethod }]) => {
           const pct = grandTotal > 0 ? (sum / grandTotal) * 100 : 0
