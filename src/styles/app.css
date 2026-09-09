@@ -1750,6 +1750,7 @@ body {
   border: 0;
   background: transparent;
   font: inherit;
+  color: inherit;
   cursor: pointer;
 }
 
