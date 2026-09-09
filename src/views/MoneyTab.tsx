@@ -114,9 +114,6 @@ export default function MoneyTab() {
       .sort((a, b) => b[0].localeCompare(a[0]))
   }, [dayBase, rate])
   const dailyGrandTotal = dailyTotals.reduce((sum, [, v]) => sum + v.sum, 0)
-  // 長條圖長度依單日金額佔「金額最高的那天」的比例（不是佔全部日期總和），
-  // 花費最多的一天長條滿版，其餘依比例縮短，方便跨日比較。
-  const dailyMax = Math.max(1, ...dailyTotals.map(([, v]) => v.sum))
   // 預設只顯示最新兩天，超過兩天才出現「顯示更多／更少」切換。
   const visibleDailyTotals = dailyExpanded ? dailyTotals : dailyTotals.slice(0, 2)
 
@@ -236,7 +233,6 @@ export default function MoneyTab() {
           </div>
           {visibleDailyTotals.map(([day, { sum, byMethod }]) => {
             const pct = dailyGrandTotal > 0 ? (sum / dailyGrandTotal) * 100 : 0
-            const barPct = (sum / dailyMax) * 100
             const isSelected = expDate === day
             return (
               <button
@@ -252,7 +248,7 @@ export default function MoneyTab() {
                   {formatExpenseDate(day)}
                 </span>
                 <span className="money-cat-bar" style={{ opacity: isSelected ? 1 : 0.85 }}>
-                  <span className="money-cat-bar-fill" style={{ width: `${barPct}%` }}>
+                  <span className="money-cat-bar-fill" style={{ width: `${pct}%` }}>
                     {methods.map((m, i) => (
                       <span
                         key={m}
