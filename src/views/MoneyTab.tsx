@@ -170,7 +170,7 @@ export default function MoneyTab() {
             </div>
             <div className="money-dual-divider" />
             <div className="money-dual-col">
-              <div className="money-dual-label">台幣</div>
+              <div className="money-dual-label">台幣總計</div>
               <div className="money-dual-value">{formatTWD(twdDirectTotal)}</div>
             </div>
           </div>
