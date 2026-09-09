@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { SlidersHorizontal, PencilSimple, CheckSquare, Square, Funnel } from '@phosphor-icons/react'
+import { SlidersHorizontal, PencilSimple, CheckSquare, Square, Funnel, CaretDown, CaretUp } from '@phosphor-icons/react'
 import { useStore, useMemberNames } from '../lib/store'
 import { CAT_ICON, CAT_COLOR } from '../data/spots'
 import { phosphorIcon } from '../lib/icons'
@@ -277,6 +277,7 @@ export default function MoneyTab() {
               onClick={() => setDailyExpanded(!dailyExpanded)}
             >
               {dailyExpanded ? '顯示更少' : '顯示更多'}
+              {dailyExpanded ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
             </button>
           )}
         </div>

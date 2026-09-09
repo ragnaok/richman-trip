@@ -1829,9 +1829,11 @@ body {
 
 /* — 每日花費「顯示更多／更少」：預設只列最新兩天，超過才出現 — */
 .money-daily-toggle {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   width: 100%;
-  text-align: center;
   margin-top: 10px;
   padding: 6px 0 2px;
   border: 0;
