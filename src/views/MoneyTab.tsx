@@ -160,7 +160,7 @@ export default function MoneyTab() {
           {/* 雙幣對照：兩欄＋中間分隔線，不是單行文字。 */}
           <div className="money-dual-currency">
             <div className="money-dual-col">
-              <div className="money-dual-label">日幣</div>
+              <div className="money-dual-label">日幣總計</div>
               <div className="money-dual-value">{formatJPY(jpyTotal)}</div>
             </div>
             <div className="money-dual-divider" />
