@@ -260,11 +260,16 @@ export default function MoneyTab() {
           {visibleDailyTotals.map(([day, { sum, byMethod }]) => {
             const pct = dailyGrandTotal > 0 ? (sum / dailyGrandTotal) * 100 : 0
             const isSelected = expDate === day
+            // 選了某一天之後，其餘天數除了維持原本的淡出，還要整列變灰階，凸顯
+            // 選中的那天——只有實際有選日期時才生效，沒有篩選時大家都是原本的
+            // 淡出樣式，不要整排都變灰。
+            const isOtherSelected = expDate !== ALL_FILTER && !isSelected
             return (
               <button
                 key={day}
                 type="button"
                 className="money-cat-row money-daily-row"
+                style={{ filter: isOtherSelected ? 'grayscale(1)' : 'none' }}
                 onClick={() => toggleExpDate(day)}
               >
                 <span
