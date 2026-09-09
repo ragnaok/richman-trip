@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { SlidersHorizontal, PencilSimple, CheckSquare, Square, Funnel, CaretDown, CaretUp } from '@phosphor-icons/react'
 import { useStore, useMemberNames } from '../lib/store'
-import { CAT_ICON, CAT_COLOR } from '../data/spots'
+import { CAT_ICON } from '../data/spots'
 import { phosphorIcon } from '../lib/icons'
 import { rateNum, twd, formatTWD, formatJPY, payMethod, methodLabel, methodOrder, methodColor } from '../lib/money'
 import { formatExpenseDate } from '../lib/time'
@@ -79,8 +79,9 @@ export default function MoneyTab() {
   // 才不會跳動；也讓圖例一定會列出使用者新增過的自訂付款方式。
   const methods = useMemo(() => methodOrder(items.map(payMethod)), [items])
 
-  // 分類統計：每個分類的長條依付款方式拆成多段，沿用該分類的 CAT_COLOR 當底色，
-  // 深淺依 methods 順序排開（見 lib/money.ts methodColor）。
+  // 分類統計：每個分類的長條依付款方式拆成多段，顏色跟每日花費、圖例共用同一份
+  // methodColor 色票（見 lib/money.ts），不再用分類色——付款方式一多，色票的顏色
+  // 辨識度比「同色相深淺」好很多，圖例的顏色也才會跟長條對得上。
   const catTotals = useMemo(() => {
     const totals = new Map<string, { sum: number; byMethod: Record<string, number> }>()
     for (const e of effItems) {
@@ -224,7 +225,7 @@ export default function MoneyTab() {
                 <span key={m} className="money-cat-legend-item">
                   <span
                     className="money-cat-legend-swatch"
-                    style={{ background: methodColor('var(--color-neutral-800)', i, methods.length) }}
+                    style={{ background: methodColor(i) }}
                   />
                   {methodLabel(m)}
                 </span>
@@ -255,7 +256,7 @@ export default function MoneyTab() {
                         className="money-cat-bar-value"
                         style={{
                           width: `${sum > 0 ? ((byMethod[m] ?? 0) / sum) * 100 : 0}%`,
-                          background: methodColor('var(--color-neutral-800)', i, methods.length),
+                          background: methodColor(i),
                         }}
                       />
                     ))}
@@ -287,7 +288,7 @@ export default function MoneyTab() {
               <span key={m} className="money-cat-legend-item">
                 <span
                   className="money-cat-legend-swatch"
-                  style={{ background: methodColor('var(--color-neutral-800)', i, methods.length) }}
+                  style={{ background: methodColor(i) }}
                 />
                 {methodLabel(m)}
               </span>
@@ -296,7 +297,6 @@ export default function MoneyTab() {
         </div>
         {catTotals.map(([cat, { sum, byMethod }]) => {
           const pct = grandTotal > 0 ? (sum / grandTotal) * 100 : 0
-          const color = CAT_COLOR[cat] ?? 'var(--color-text)'
           return (
             <div key={cat} className="money-cat-row">
               <span className="money-cat-name">{cat}</span>
@@ -308,7 +308,7 @@ export default function MoneyTab() {
                       className="money-cat-bar-value"
                       style={{
                         width: `${sum > 0 ? ((byMethod[m] ?? 0) / sum) * 100 : 0}%`,
-                        background: methodColor(color, i, methods.length),
+                        background: methodColor(i),
                       }}
                     />
                   ))}

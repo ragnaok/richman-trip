@@ -37,12 +37,26 @@ export function methodOrder(methods: Iterable<PayMethod>): PayMethod[] {
   return ['cash', 'card', ...custom]
 }
 
-/** 付款方式在長條圖／圖例上的顏色：同一色相依 methodOrder 的順序從淡到濃排開
- * （現金最淡、順序最後一個最濃），base 可以是分類色（分類統計）或中性色
- * （每日花費／圖例本身）。 */
-export function methodColor(base: string, index: number, total: number): string {
-  const share = total <= 1 ? 100 : Math.round(40 + (60 * index) / (total - 1))
-  return share >= 100 ? base : `color-mix(in srgb, ${base} ${share}%, white)`
+// 付款方式圖表色票：固定幾個彼此好分辨的色相（沿用 tokens.css 既有色票，不新增
+// 顏色），不是同一色相的深淺變化——付款方式一多，深淺差異的辨識度太差（例如 5 種
+// 灰階幾乎看不出差別）。同一種付款方式在整個記帳頁（每日花費／分類統計的長條＋
+// 圖例）都吃同一個顏色，圖例的顏色就是長條的顏色，兩邊不會對不上；分類統計因此
+// 不再用 CAT_COLOR（分類色）當長條底色——分類名稱本來就在最左邊用文字標出來，
+// 顏色改負責標示付款方式這件事，不用同時扛兩種意義。
+const METHOD_PALETTE = [
+  'var(--color-neutral-800)',
+  'var(--color-accent)',
+  'var(--color-accent-2)',
+  'var(--color-process-yellow)',
+  'var(--color-accent-700)',
+  'var(--color-accent-2-700)',
+  'var(--color-neutral-500)',
+]
+
+/** 付款方式在長條圖／圖例上的顏色，依 methodOrder 給的順序從 METHOD_PALETTE 固定
+ * 指派，超過色票長度就循環使用。 */
+export function methodColor(index: number): string {
+  return METHOD_PALETTE[index % METHOD_PALETTE.length]
 }
 
 /** 匯率字串轉數字，非法輸入（空字串、非數字、負數、0）一律 fallback 0.216。 */
