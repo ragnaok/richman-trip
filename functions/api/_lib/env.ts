@@ -14,4 +14,8 @@ export interface Env {
   // Cloudflare Pages 自動注入，不是 Secret：`wrangler pages deploy` 部署當下依本機
   // git HEAD 設定。functions/api/version.ts 用來讓前端比對是否有新版本。
   CF_PAGES_COMMIT_SHA?: string
+  // Cloudflare Pages 自動注入，不用在 wrangler.toml 設定：讀建置輸出的靜態檔案。
+  // functions/icon-192.png.ts / icon-512.png.ts 沒有 D1 設定值時拿這個 fetch
+  // public/default-icon-*.png 當退回預設圖。
+  ASSETS: Fetcher
 }

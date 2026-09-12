@@ -2577,6 +2577,32 @@ body {
   color: color-mix(in srgb, var(--color-text) 50%, transparent);
 }
 
+.settings-icon-row {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.settings-icon-field {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-icon-photo {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.settings-icon-field-label {
+  font-size: 10.5px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  text-align: center;
+}
+
 .settings-hotel-latlon-hint {
   margin: 8px 0 0;
   font-size: 11px;
