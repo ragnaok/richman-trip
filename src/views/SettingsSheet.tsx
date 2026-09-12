@@ -230,7 +230,7 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
       </div>
 
       <div className="settings-section">
-        <div className="edit-section-label">目的地</div>
+        <div className="edit-section-label">外觀</div>
         <div className="field" style={{ marginTop: 10 }}>
           <label>圖示</label>
           <PhotoUpload
@@ -257,7 +257,11 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
             分頁圖示換了立刻生效；主畫面圖示只影響「以後」加到主畫面的人，已經加過的人要移除圖示重新加一次才會更新（iOS 系統限制）。沒上傳就維持範本預設圖。
           </p>
         </div>
-        <div className="field" style={{ marginTop: 14 }}>
+      </div>
+
+      <div className="settings-section">
+        <div className="edit-section-label">目的地</div>
+        <div className="field" style={{ marginTop: 10 }}>
           <label>主視覺照片</label>
           <PhotoUpload
             className="settings-hero-photo"
