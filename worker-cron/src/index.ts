@@ -15,18 +15,23 @@ import { buildPushHTTPRequest } from '@pushforge/builder'
 interface Env {
   VAPID_PRIVATE_KEY: string
   CRON_SECRET: string
-  // 每趟行程各自的 D1 binding 加在這裡，例如 DB_INUYAMA: D1Database（見下方 TRIPS）。
+  DB_INUYAMA: D1Database
+  DB_OKAYAMA: D1Database
 }
 
 // 一支 Worker 共用給所有用這套模板開的行程，各趟行程的 D1 完全獨立。
 // 開新行程：wrangler.toml 加一組 [[d1_databases]]，這裡加一筆對應項目，例如：
 // { name: 'inuyama', db: (env) => env.DB_INUYAMA }
+// （scripts/trip-cli/new-trip.sh 同帳號開新行程時會自動處理這兩處。）
 interface TripConfig {
   name: string
   db: (env: Env) => D1Database
 }
 
-const TRIPS: TripConfig[] = []
+const TRIPS: TripConfig[] = [
+  { name: 'inuyama', db: (env) => env.DB_INUYAMA },
+  { name: 'okayama', db: (env) => env.DB_OKAYAMA },
+]
 
 interface PlanRow {
   id: string

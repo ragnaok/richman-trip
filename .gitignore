@@ -31,3 +31,8 @@ dist-ssr
 /backups
 /seed.sql
 /design
+
+# trip-cli：每趟行程的本機素材（wrangler.toml/trip.conf/favicon/hero-photo 等）
+# 跟本機快取的 VAPID 金鑰，刻意不進版控——見 scripts/trip-cli/README.md
+/local-trips
+/.trip-cli-cache
