@@ -3,8 +3,10 @@ import { Camera, PencilSimple } from '@phosphor-icons/react'
 import { fileToResizedDataUrl } from '../lib/imageUpload'
 
 /**
- * 景點照片上傳。沒有照片時顯示「＋ 新增照片」占位按鈕，有照片時顯示照片本身並在
+ * 照片上傳。沒有照片時顯示「＋ 新增照片」占位按鈕，有照片時顯示照片本身並在
  * 右上角疊一顆編輯按鈕；兩種情境用 `photo` 有沒有值切換，不需要編輯模式開關。
+ * `toDataUrl` 預設是給一般照片用的縮圖＋JPEG 壓縮；favicon/PWA icon 這類需要
+ * 正方形＋透明背景的場合，呼叫端傳 `fileToSquareIconDataUrl` 換掉。
  */
 export default function PhotoUpload({
   photo,
@@ -12,12 +14,14 @@ export default function PhotoUpload({
   alt,
   className,
   emptyLabel = '新增照片',
+  toDataUrl = fileToResizedDataUrl,
 }: {
   photo?: string
   onChange: (dataUrl: string) => void
   alt: string
   className?: string
   emptyLabel?: string
+  toDataUrl?: (file: File) => Promise<string>
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -33,7 +37,7 @@ export default function PhotoUpload({
     if (!file) return
     setUploading(true)
     try {
-      const dataUrl = await fileToResizedDataUrl(file)
+      const dataUrl = await toDataUrl(file)
       onChange(dataUrl)
     } finally {
       setUploading(false)

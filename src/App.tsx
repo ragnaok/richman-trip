@@ -61,6 +61,7 @@ export default function App() {
   const closeSettings = useStore((s) => s.closeSettings)
   const authStatus = useStore((s) => s.ui.auth.status)
   const destTitle = useStore((s) => s.entities.settings.destTitle)
+  const favicon = useStore((s) => s.entities.settings.favicon)
   const allSpots = useAllSpots()
   const { toast } = useToast()
 
@@ -89,6 +90,15 @@ export default function App() {
     document.title = destTitle
     document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', destTitle)
   }, [destTitle])
+
+  // 分頁 favicon 跟著設定頁「圖示」走。改既有 <link> 的 href 而不是另外插一個：
+  // 這個 <link> 是瀏覽器分頁圖示，JS 跑起來後改沒問題（跟「加到主畫面」圖示不同，
+  // 那個 iOS 只認 index.html 裡的 apple-touch-icon，且必須是真的能 fetch 到的網址，
+  // 不吃 data URL，見 functions/icon-192.png.ts / icon-512.png.ts）。
+  useEffect(() => {
+    if (!favicon) return
+    document.querySelector('link[rel="icon"]')?.setAttribute('href', favicon)
+  }, [favicon])
 
   const ActiveView = VIEWS[tab]
 

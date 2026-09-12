@@ -12,6 +12,7 @@ import {
   sendTestPush,
 } from '../lib/push'
 import PhotoUpload from '../components/PhotoUpload'
+import { fileToSquareIconDataUrl } from '../lib/imageUpload'
 import { apiFetchJson } from '../lib/api'
 import type { StoredHotel } from '../lib/types'
 
@@ -40,6 +41,9 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
   const destSubtitle = useStore((s) => s.entities.settings.destSubtitle ?? '')
   const geminiRegionHint = useStore((s) => s.entities.settings.geminiRegionHint ?? '')
   const heroPhoto = useStore((s) => s.entities.settings.heroPhoto)
+  const favicon = useStore((s) => s.entities.settings.favicon)
+  const icon192 = useStore((s) => s.entities.settings.icon192)
+  const icon512 = useStore((s) => s.entities.settings.icon512)
   const tripStart = useStore((s) => s.entities.settings.tripStart ?? '')
   const tripEnd = useStore((s) => s.entities.settings.tripEnd ?? '')
   const rate = useStore((s) => s.entities.settings.rate ?? '0.216')
@@ -260,6 +264,47 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
             onChange={(e) => setSetting('geminiRegionHint', e.target.value)}
             placeholder="例：日本東京都周邊"
           />
+        </div>
+        <div className="field" style={{ marginTop: 14 }}>
+          <label>圖示</label>
+          <div className="settings-icon-row">
+            <div className="settings-icon-field">
+              <PhotoUpload
+                className="settings-icon-photo"
+                photo={favicon}
+                alt="瀏覽器分頁圖示"
+                emptyLabel="上傳"
+                toDataUrl={(file) => fileToSquareIconDataUrl(file, 64)}
+                onChange={(dataUrl) => setSetting('favicon', dataUrl)}
+              />
+              <span className="settings-icon-field-label">分頁圖示</span>
+            </div>
+            <div className="settings-icon-field">
+              <PhotoUpload
+                className="settings-icon-photo"
+                photo={icon192}
+                alt="加到主畫面圖示（小）"
+                emptyLabel="上傳"
+                toDataUrl={(file) => fileToSquareIconDataUrl(file, 192)}
+                onChange={(dataUrl) => setSetting('icon192', dataUrl)}
+              />
+              <span className="settings-icon-field-label">主畫面圖示</span>
+            </div>
+            <div className="settings-icon-field">
+              <PhotoUpload
+                className="settings-icon-photo"
+                photo={icon512}
+                alt="加到主畫面圖示（大）"
+                emptyLabel="上傳"
+                toDataUrl={(file) => fileToSquareIconDataUrl(file, 512)}
+                onChange={(dataUrl) => setSetting('icon512', dataUrl)}
+              />
+              <span className="settings-icon-field-label">主畫面圖示（大）</span>
+            </div>
+          </div>
+          <p className="settings-hero-photo-hint">
+            分頁圖示換了立刻生效；主畫面圖示只影響「以後」加到主畫面的人，已經加過的人要移除圖示重新加一次才會更新（iOS 系統限制）。沒上傳就維持範本預設圖。
+          </p>
         </div>
       </div>
 
