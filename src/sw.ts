@@ -14,6 +14,19 @@ self.skipWaiting()
 cleanupOutdatedCaches()
 precacheAndRoute(self.__WB_MANIFEST)
 
+// favicon／PWA icon（functions/icon-192.png.ts 等動態端點）：使用者能隨時在設定頁
+// 換掉，不能套用下面那條 30 天 CacheFirst，否則已經打開過 App 的人要等快取過期
+// 才看得到新圖，跟這個功能的目的矛盾。註冊順序要在 images-cache 規則之前——
+// workbox-routing 依註冊順序比對，先匹配的先贏。
+registerRoute(
+  ({ url }) => /^\/(favicon\.png|icon-(?:192|512)\.png)$/.test(url.pathname),
+  new NetworkFirst({
+    cacheName: 'app-icon-cache',
+    networkTimeoutSeconds: 3,
+    plugins: [new ExpirationPlugin({ maxEntries: 4, maxAgeSeconds: 60 * 5 })],
+  }),
+)
+
 // 景點靜態資料與照片：CacheFirst，離線也能顯示已看過的圖。
 registerRoute(
   ({ request, url }) => request.destination === 'image' || /\.(?:png|jpe?g|svg|webp)$/i.test(url.pathname),
