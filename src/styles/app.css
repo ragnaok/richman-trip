@@ -2563,6 +2563,21 @@ body {
   width: 140px;
 }
 
+.settings-visual-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.settings-visual-hero-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-visual-icon-field {
+  flex: 0 0 auto;
+}
+
 .settings-hero-photo {
   width: 100%;
   height: 140px;
