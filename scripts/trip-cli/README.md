@@ -48,9 +48,13 @@ favicon／PWA icon（加到主畫面用的圖示）**不在這裡**——那兩�
    ——亂產生會讓那個帳號底下所有行程的 Web Push 訂閱全部失效），全新帳號才產生
    新的一組。本機快取在 `.trip-cli-cache/<profile>/vapid.json`（gitignored）。
 6. `worker-cron/`：同帳號自動加 D1 binding、`TRIPS` 項目、部署、commit 到
-   `main`；全新帳號印手動步驟，**不會**自動 commit（`worker-cron/wrangler.toml`
+   `main`；全新帳號則暫時本機改寫 `worker-cron/wrangler.toml`／`src/index.ts`
+   成只含這趟行程的版本、自動產生 `CRON_SECRET`、部署成一支獨立的 Worker、設好
+   `VAPID_PRIVATE_KEY`／`CRON_SECRET` 兩個 Secret，部署完立刻把這兩個檔案換回
+   `main` 的版本（`git checkout --`），**絕不 commit**（`worker-cron/wrangler.toml`
    同一份檔案同時只能代表一個 Cloudflare 帳號的部署狀態，不同帳號的 binding
-   混在一起 commit 上去會互相污染）。
+   混在一起 commit 上去會互相污染）。最後印出 cron-job.org 要貼的網址（`CRON_SECRET`
+   已 URL-encode），這一步無法自動化——需要你自己的 cron-job.org 帳號。
 
 `deploy-trip.sh`：確保本機 `main` 是最新的 → `tsc -b && oxlint` → 暫時把
 `local-trips/<trip>/` 的 `wrangler.toml`／`public/*` 素材／`index.html` 標題
