@@ -41,9 +41,7 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
   const destSubtitle = useStore((s) => s.entities.settings.destSubtitle ?? '')
   const geminiRegionHint = useStore((s) => s.entities.settings.geminiRegionHint ?? '')
   const heroPhoto = useStore((s) => s.entities.settings.heroPhoto)
-  const favicon = useStore((s) => s.entities.settings.favicon)
   const icon192 = useStore((s) => s.entities.settings.icon192)
-  const icon512 = useStore((s) => s.entities.settings.icon512)
   const tripStart = useStore((s) => s.entities.settings.tripStart ?? '')
   const tripEnd = useStore((s) => s.entities.settings.tripEnd ?? '')
   const rate = useStore((s) => s.entities.settings.rate ?? '0.216')
@@ -267,41 +265,26 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
         </div>
         <div className="field" style={{ marginTop: 14 }}>
           <label>圖示</label>
-          <div className="settings-icon-row">
-            <div className="settings-icon-field">
-              <PhotoUpload
-                className="settings-icon-photo"
-                photo={favicon}
-                alt="瀏覽器分頁圖示"
-                emptyLabel="上傳"
-                toDataUrl={(file) => fileToSquareIconDataUrl(file, 64)}
-                onChange={(dataUrl) => setSetting('favicon', dataUrl)}
-              />
-              <span className="settings-icon-field-label">分頁圖示</span>
-            </div>
-            <div className="settings-icon-field">
-              <PhotoUpload
-                className="settings-icon-photo"
-                photo={icon192}
-                alt="加到主畫面圖示（小）"
-                emptyLabel="上傳"
-                toDataUrl={(file) => fileToSquareIconDataUrl(file, 192)}
-                onChange={(dataUrl) => setSetting('icon192', dataUrl)}
-              />
-              <span className="settings-icon-field-label">主畫面圖示</span>
-            </div>
-            <div className="settings-icon-field">
-              <PhotoUpload
-                className="settings-icon-photo"
-                photo={icon512}
-                alt="加到主畫面圖示（大）"
-                emptyLabel="上傳"
-                toDataUrl={(file) => fileToSquareIconDataUrl(file, 512)}
-                onChange={(dataUrl) => setSetting('icon512', dataUrl)}
-              />
-              <span className="settings-icon-field-label">主畫面圖示（大）</span>
-            </div>
-          </div>
+          <PhotoUpload
+            className="settings-icon-photo"
+            photo={icon192}
+            alt="圖示"
+            emptyLabel="上傳"
+            toDataUrl={async (file) => {
+              // 上傳一張，裁正方形後一次生成分頁圖示（64）／主畫面小圖（192）／
+              // 大圖（512）三種尺寸，不用使用者自己準備三張——favicon/icon192
+              // 直接存，這裡回傳 icon512 當預覽縮圖（PhotoUpload 的 photo prop 顯示用）。
+              const [faviconUrl, icon192Url, icon512Url] = await Promise.all([
+                fileToSquareIconDataUrl(file, 64),
+                fileToSquareIconDataUrl(file, 192),
+                fileToSquareIconDataUrl(file, 512),
+              ])
+              setSetting('favicon', faviconUrl)
+              setSetting('icon512', icon512Url)
+              return icon192Url
+            }}
+            onChange={(dataUrl) => setSetting('icon192', dataUrl)}
+          />
           <p className="settings-hero-photo-hint">
             分頁圖示換了立刻生效；主畫面圖示只影響「以後」加到主畫面的人，已經加過的人要移除圖示重新加一次才會更新（iOS 系統限制）。沒上傳就維持範本預設圖。
           </p>
