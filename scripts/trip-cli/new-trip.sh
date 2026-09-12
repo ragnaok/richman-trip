@@ -22,15 +22,21 @@ if ! [[ "$TRIP" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
 fi
 
 cd "$REPO_ROOT"
+require_clean_git
 
-if [ -d "deploy/$TRIP" ]; then
-  log_err "deploy/$TRIP 已經存在，這趟行程是不是已經開過了？"
+# 不能用「deploy/$TRIP 存不存在」判斷這趟行程開過沒有：deploy/<trip>/ 只存在於
+# 該行程自己的分支上，main（或其他分支）的工作目錄裡本來就看不到，不管有沒有
+# 開過都一樣是空的。用 git branch 是不是已經有這個名字才對得起「全域、跟目前
+# checkout 到哪個分支無關」這個要求。
+if git show-ref --verify --quiet "refs/heads/$TRIP"; then
+  log_err "分支 $TRIP 已經存在，這趟行程是不是已經開過了？"
   exit 1
 fi
 
-require_clean_git
-if [ "$(git branch --show-current)" != "main" ]; then
-  log_err "請先切回 main 再開新行程（目前在 $(git branch --show-current)）。"
+log_info "切到 main 並更新到最新……"
+git checkout main
+if ! git pull --ff-only; then
+  log_err "git pull 失敗（可能離線，或本機 main 跟遠端分岔了），手動處理後再重跑。"
   exit 1
 fi
 

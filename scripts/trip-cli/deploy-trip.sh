@@ -21,6 +21,13 @@ require_clean_git
 
 ORIGINAL_BRANCH="$(git branch --show-current)"
 
+log_info "更新本機 main……"
+git checkout main
+if ! git pull --ff-only; then
+  log_err "git pull 失敗（可能離線，或本機 main 跟遠端分岔了），手動處理後再重跑。"
+  exit 1
+fi
+
 log_info "git checkout $TRIP && git rebase main ……"
 git checkout "$TRIP"
 if ! git rebase main; then
