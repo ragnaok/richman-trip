@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 部署一趟已經設定過的行程（local-trips/<trip>/trip.conf 已存在）。
 # 流程：確保在最新 main → typecheck/lint/build → 換入該行程的素材（wrangler.toml、
-# favicon/icon/hero-photo、index.html 標題）→ 部署 → 換回範本內容 → 確認落在
-# Production。
+# hero-photo、index.html 標題）→ 部署 → 換回範本內容 → 確認落在 Production。
+# favicon／PWA icon 不在這裡處理，那兩個是設定頁上傳、存 D1、動態 Function 吐出來。
 #
 # 用法：scripts/trip-cli/deploy-trip.sh <trip-slug>
 set -euo pipefail

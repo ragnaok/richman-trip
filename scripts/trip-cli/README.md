@@ -25,11 +25,12 @@ local-trips/<trip>/
   trip.conf       # PROFILE / PAGES_PROJECT / PROD_BRANCH / D1_NAME
   title.txt       # index.html <title> 跟 apple-mobile-web-app-title 的值
   assets/
-    favicon.png       # 沒放就維持範本預設圖，不強制每項都要有
-    icon-192.png
-    icon-512.png
-    hero-photo.jpg
+    hero-photo.jpg  # 沒放就維持範本預設圖，可以先跳過之後再放
 ```
+
+favicon／PWA icon（加到主畫面用的圖示）**不在這裡**——那兩個已經改成設定頁上傳、
+存進 D1、由 `functions/icon-192.png.ts`／`icon-512.png.ts` 動態吐出來，部署完
+登入後直接在設定頁上傳即可，不需要準備檔案放進 `local-trips/`。
 
 **這整個資料夾不進 git**，換一台機器部署同一趟行程要自己把它搬過去（例如放
 雲端硬碟、或用密碼管理器的附件功能）。這是刻意的取捨：main 上因此永遠不會

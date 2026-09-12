@@ -74,9 +74,11 @@ find_profile_siblings() {
   done < <(find "$LOCAL_TRIPS_DIR" -mindepth 2 -maxdepth 2 -name 'trip.conf' 2>/dev/null || true)
 }
 
-# 部署前把根目錄的 wrangler.toml／public 靜態檔／index.html 標題換成這趟行程在
-# local-trips/<trip>/ 裡的版本，只換「行程資料夾裡真的有放」的檔案——沒放的（例如
-# 沒自訂 favicon）就維持範本預設，不強迫每趟行程都要準備一整套素材。
+# 部署前把根目錄的 wrangler.toml／public/hero-photo.jpg／index.html 標題換成這趟
+# 行程在 local-trips/<trip>/ 裡的版本，只換「行程資料夾裡真的有放」的檔案——沒放
+# 就維持範本預設，不強迫每趟行程都要準備素材。favicon／PWA icon 不在這裡處理，
+# 那兩個已經改成設定頁上傳、存 D1、動態 Function 吐出來（見 functions/icon-192.png.ts
+# 開頭註解），不是本機建置時的靜態檔了。
 # 回傳一個備份目錄路徑；用法：
 #   backup="$(apply_local_trip "$trip")"
 #   trap 'restore_local_trip "$backup"' EXIT
@@ -93,7 +95,7 @@ apply_local_trip() {
   : > "$backup_dir/manifest"
 
   local rel src
-  for rel in public/favicon.png public/icon-192.png public/icon-512.png public/hero-photo.jpg wrangler.toml; do
+  for rel in public/hero-photo.jpg wrangler.toml; do
     # wrangler.toml 放在 trip_dir 根目錄，其餘素材放在 trip_dir/assets/ 底下。
     if [ "$rel" = "wrangler.toml" ]; then
       src="$trip_dir/wrangler.toml"

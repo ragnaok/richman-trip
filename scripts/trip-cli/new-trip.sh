@@ -130,8 +130,8 @@ read -r TRIP_TITLE
 echo "$TRIP_TITLE" > "$LOCAL_TRIPS_DIR/$TRIP/title.txt"
 
 log_ok "已寫入 local-trips/$TRIP/（wrangler.toml、trip.conf、title.txt）。"
-log_warn "favicon.png／icon-192.png／icon-512.png／hero-photo.jpg 記得手動放進"
-log_warn "local-trips/$TRIP/assets/（沒放的就維持範本預設圖，不強制每項都要有）。"
+log_warn "hero-photo.jpg 想換的話記得手動放進 local-trips/$TRIP/assets/（沒放就維持"
+log_warn "範本預設圖）；favicon／PWA icon 部署後直接在 App 的設定頁上傳即可，不用放檔案。"
 
 # --- 6. Secrets ---
 log_info "設定 Secrets……"
@@ -265,7 +265,7 @@ cat <<DONE
 
 $(log_ok "行程 $TRIP 設定完成。")
 下一步：
-  - 把 favicon／icon-192／icon-512／hero-photo 放進 local-trips/$TRIP/assets/（沒有的可以先跳過）
+  - 想換 hero-photo 的話放進 local-trips/$TRIP/assets/（可以先跳過，之後再放）
   - 跑 scripts/trip-cli/deploy-trip.sh $TRIP 做第一次部署
-  - 部署完，登入後到設定頁填目的地標題／旅遊日期／住宿地點
+  - 部署完，登入後到設定頁填目的地標題／旅遊日期／住宿地點／favicon／PWA icon
 DONE
