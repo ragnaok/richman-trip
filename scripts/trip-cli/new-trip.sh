@@ -50,7 +50,7 @@ if [ -z "$PROFILE" ]; then
   exit 1
 fi
 if ! npx wrangler auth list 2>&1 | grep -qE "│ *${PROFILE} *│"; then
-  log_info "沒看到 profile「$PROFILE」，建立一個新的（會開瀏覽器走 OAuth）……"
+  log_info "沒看到 profile「${PROFILE}」，建立一個新的（會開瀏覽器走 OAuth）……"
   npx wrangler auth create "$PROFILE"
 fi
 
@@ -60,10 +60,10 @@ D1_NAME="$TRIP"
 
 SIBLINGS="$(find_profile_siblings "$PROFILE" "")"
 if [ -n "$SIBLINGS" ]; then
-  log_info "profile「$PROFILE」底下已經有其他行程：$(echo "$SIBLINGS" | tr '\n' ' ')"
+  log_info "profile「${PROFILE}」底下已經有其他行程：$(echo "$SIBLINGS" | tr '\n' ' ')"
   SAME_ACCOUNT=1
 else
-  log_info "profile「$PROFILE」底下目前沒有其他行程，視為這個帳號的第一趟行程。"
+  log_info "profile「${PROFILE}」底下目前沒有其他行程，視為這個帳號的第一趟行程。"
   SAME_ACCOUNT=0
 fi
 
@@ -81,7 +81,7 @@ SUMMARY
 confirm_yes "上面這些會建立雲端資源並寫入本機檔案。"
 
 # --- 2. D1 ---
-log_info "建立 D1「$D1_NAME」……"
+log_info "建立 D1「${D1_NAME}」……"
 D1_OUTPUT="$(npx wrangler d1 create "$D1_NAME" --profile "$PROFILE" 2>&1)" || {
   echo "$D1_OUTPUT"
   log_err "wrangler d1 create 失敗（如果是「already exists」，這個名稱可能被用過，換一個行程代號）。"
@@ -100,7 +100,7 @@ log_info "對 $D1_NAME 灌 schema.sql（正式環境）……"
 npx wrangler d1 execute "$D1_NAME" --remote --profile "$PROFILE" --file=schema.sql
 
 # --- 4. Pages 專案 ---
-log_info "建立 Pages 專案 $PAGES_PROJECT（production branch: $PROD_BRANCH）……"
+log_info "建立 Pages 專案 ${PAGES_PROJECT}（production branch: ${PROD_BRANCH}）……"
 npx wrangler pages project create "$PAGES_PROJECT" --production-branch "$PROD_BRANCH" --profile "$PROFILE"
 
 # --- 5. local-trips/<trip>/ 設定檔 ---
@@ -165,7 +165,7 @@ if [ "$SAME_ACCOUNT" = 1 ]; then
   log_warn "這個帳號已經有其他行程在用同一組 VAPID 金鑰——所有行程的 Pages 專案跟"
   log_warn "worker-cron 都要是同一組，亂產生新的會讓既有訂閱全部失效。"
   if [ -f "$VAPID_CACHE" ]; then
-    log_info "本機快取找到上次存的 VAPID 金鑰（$VAPID_CACHE），直接沿用。"
+    log_info "本機快取找到上次存的 VAPID 金鑰（${VAPID_CACHE}），直接沿用。"
     VAPID_PUBLIC_KEY="$(grep -oE '"public" *: *"[^"]*"' "$VAPID_CACHE" | sed -E 's/.*"([^"]*)"$/\1/' || true)"
     VAPID_PRIVATE_KEY_JSON="$(grep -oE '"private" *: *".*"' "$VAPID_CACHE" | sed -E 's/^"private" *: *//' || true)"
     if [ -z "$VAPID_PUBLIC_KEY" ] || [ -z "$VAPID_PRIVATE_KEY_JSON" ]; then
