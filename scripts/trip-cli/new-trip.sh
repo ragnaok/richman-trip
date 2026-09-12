@@ -197,9 +197,9 @@ echo "$VAPID_PRIVATE_KEY_JSON" | npx wrangler pages secret put VAPID_PRIVATE_KEY
 log_ok "VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY 已設定。"
 
 # --- 8. worker-cron ---
+BINDING="DB_$(echo "$TRIP" | tr '[:lower:]-' '[:upper:]_')"
 if [ "$SAME_ACCOUNT" = 1 ]; then
   log_info "同帳號已有既有行程，自動接上 worker-cron……"
-  BINDING="DB_$(echo "$TRIP" | tr '[:lower:]-' '[:upper:]_')"
   cat >> worker-cron/wrangler.toml <<WCTOML
 
 [[d1_databases]]
@@ -237,28 +237,84 @@ PYEOF
   git commit -m "worker-cron: 加上 ${TRIP} 的 D1 binding"
   log_ok "worker-cron 已更新並部署，改動已 commit 到 main。"
 else
-  cat <<MANUAL
+  log_warn "全新帳號，worker-cron 需要獨立部署一份（跟其他帳號完全獨立），自動處理……"
 
-$(log_warn "全新帳號，worker-cron 需要手動部署一份（跟其他帳號完全獨立）：")
-  1. 產生一組隨機 CRON_SECRET： openssl rand -base64 24
-  2. cd worker-cron
-  3. 編輯 wrangler.toml，加一組：
-       [[d1_databases]]
-       binding = "DB_$(echo "$TRIP" | tr '[:lower:]-' '[:upper:]_')"
-       database_name = "${D1_NAME}"
-       database_id = "${DATABASE_ID}"
-  4. 編輯 src/index.ts 的 TRIPS，加一筆對應項目
-  5. npx wrangler secret put VAPID_PRIVATE_KEY --profile ${PROFILE}（貼上面產生的 private key JSON）
-  6. npx wrangler secret put CRON_SECRET --profile ${PROFILE}（貼步驟 1 產生的值）
-  7. npx wrangler deploy --profile ${PROFILE}
-  8. 到 cron-job.org 設一個每分鐘排程，URL 打 https://<worker>.<你的 workers 子網域>.workers.dev/trigger?key=<CRON_SECRET>
+  CRON_SECRET="$(openssl rand -base64 24)"
+  echo "$CRON_SECRET" > "$CACHE_DIR/cron-secret.txt"
+  WORKER_NAME="${PROFILE}-trip-cron"
 
-  $(log_err "第 3、4 步改完千萬不要 commit 到 main！")
-  worker-cron/wrangler.toml、src/index.ts 的 TRIPS 在 main 上目前存的是「$PROFILE
-  以外那個帳號」的 binding（同一份檔案只能代表一個 Cloudflare 帳號的部署狀態），
-  commit 上去會蓋掉/污染既有帳號那份設定。這裡改完、部署完就好，本機這兩個檔案
-  保持未提交狀態即可；如果想留紀錄，自己另外存一份、別進這個 repo 的 main。
-MANUAL
+  # worker-cron/wrangler.toml、src/index.ts 在 main 上代表的是別的帳號的部署狀態，
+  # 這裡只是暫時本機改寫、部署完立刻換回來，絕對不 commit（跟 apply_local_trip
+  # 換素材、deploy-trip.sh 換 wrangler.toml 是同一種「借用、用完歸還」手法）。
+  WC_BACKUP_DIR="$(mktemp -d)"
+  cp worker-cron/wrangler.toml "$WC_BACKUP_DIR/wrangler.toml"
+  cp worker-cron/src/index.ts "$WC_BACKUP_DIR/index.ts"
+  trap 'cp "$WC_BACKUP_DIR/wrangler.toml" worker-cron/wrangler.toml; cp "$WC_BACKUP_DIR/index.ts" worker-cron/src/index.ts; rm -rf "$WC_BACKUP_DIR"' EXIT
+
+  cat > worker-cron/wrangler.toml <<WCTOML
+# ${PROFILE} 這個 Cloudflare 帳號專用的暫時本機版本，由 new-trip.sh 產生，部署完
+# 就會換回 main 上的版本，不會 commit（見 scripts/trip-cli/new-trip.sh 這一段）。
+name = "${WORKER_NAME}"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+[triggers]
+crons = ["* * * * *"]
+
+[[d1_databases]]
+binding = "${BINDING}"
+database_name = "${D1_NAME}"
+database_id = "${DATABASE_ID}"
+WCTOML
+
+  python3 - "$TRIP" "$BINDING" <<'PYEOF'
+import re, sys
+trip, binding = sys.argv[1], sys.argv[2]
+path = "worker-cron/src/index.ts"
+with open(path) as f:
+    content = f.read()
+entry = f"{{ name: '{trip}', db: (env) => env.{binding} }}"
+new_content, n = re.subn(
+    r"const TRIPS: TripConfig\[\] = \[.*?\]",
+    f"const TRIPS: TripConfig[] = [\n  {entry},\n]",
+    content, count=1, flags=re.S,
+)
+if n == 0:
+    print("找不到 TRIPS 陣列，請手動編輯 worker-cron/src/index.ts", file=sys.stderr)
+    sys.exit(1)
+with open(path, "w") as f:
+    f.write(new_content)
+PYEOF
+
+  log_info "部署 worker-cron（--profile ${PROFILE}，全新獨立的 Worker，不影響其他帳號）……"
+  DEPLOY_OUTPUT="$(cd worker-cron && npx wrangler deploy --profile "$PROFILE" 2>&1)"
+  echo "$DEPLOY_OUTPUT"
+  WORKER_URL="$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[^[:space:]]*\.workers\.dev' | head -1 || true)"
+
+  log_info "設定 worker-cron 的 Secrets……"
+  echo "$VAPID_PRIVATE_KEY_JSON" | (cd worker-cron && npx wrangler secret put VAPID_PRIVATE_KEY --profile "$PROFILE")
+  echo "$CRON_SECRET" | (cd worker-cron && npx wrangler secret put CRON_SECRET --profile "$PROFILE")
+
+  cp "$WC_BACKUP_DIR/wrangler.toml" worker-cron/wrangler.toml
+  cp "$WC_BACKUP_DIR/index.ts" worker-cron/src/index.ts
+  rm -rf "$WC_BACKUP_DIR"
+  trap - EXIT
+
+  if [ -n "$(git status --short -- worker-cron/)" ]; then
+    log_err "worker-cron/ 換回 main 版本後跟版控不一致，手動檢查！絕對不要 commit："
+    git status --short -- worker-cron/
+  else
+    log_ok "worker-cron/（${WORKER_NAME}）部署完成，本機已換回 main 版本（git status 乾淨）。"
+  fi
+
+  if [ -n "$WORKER_URL" ]; then
+    ENCODED_SECRET="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$CRON_SECRET")"
+    log_warn "最後一步要你自己去 cron-job.org 設定（沒辦法幫你開帳號代勞）："
+    echo "  1. 到 https://cron-job.org 設一個每分鐘排程"
+    echo "  2. URL 貼：${WORKER_URL}/trigger?key=${ENCODED_SECRET}"
+  else
+    log_warn "沒能從部署輸出解析出 workers.dev 網址，去上面的輸出手動複製，CRON_SECRET 存在 $CACHE_DIR/cron-secret.txt。"
+  fi
 fi
 
 cat <<DONE
