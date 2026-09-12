@@ -10,18 +10,28 @@
 # 2. src/index.ts 的 TRIPS 陣列加一筆對應項目
 #
 # 跨帳號無法共用：Worker 綁在單一帳號底下，看不到別的帳號的 D1，得各自部署一份。
-name = "my-trip-cron"
+#
+# name 沿用「inuyama-trip-cron」這個歷史名稱（第一趟行程是犬山，取名時還沒想到
+# 會變成帳號共用），不要改掉——Cloudflare 上已經有一支同名的 Worker 在跑，改名
+# 會讓 `wrangler deploy` 另外開一支新的，舊的那支還在跑但收不到更新，而且外部
+# cron-job.org 排程打的網址是這支 Worker 現在的網域，改名等於要重新設一次排程。
+name = "inuyama-trip-cron"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
 
 [triggers]
 crons = ["* * * * *"]
 
-# 每趟行程各加一組，binding 對應 src/index.ts 的 TRIPS 陣列，例如：
-# [[d1_databases]]
-# binding = "DB_INUYAMA"
-# database_name = "inuyama"
-# database_id = "REPLACE_WITH_REAL_D1_DATABASE_ID"
+# 每趟行程各加一組，binding 對應 src/index.ts 的 TRIPS 陣列。
+[[d1_databases]]
+binding = "DB_INUYAMA"
+database_name = "inuyama"
+database_id = "53a05395-b04a-4052-9447-166db31702cf"
+
+[[d1_databases]]
+binding = "DB_OKAYAMA"
+database_name = "okayama"
+database_id = "3f5a1580-05d6-433e-822f-a1567ee72179"
 
 # Secrets（`wrangler secret put VAPID_PRIVATE_KEY` 在這個目錄下執行）：
 # VAPID_PRIVATE_KEY — JWK JSON 字串，`npx @pushforge/builder vapid` 產生的那組私鑰。

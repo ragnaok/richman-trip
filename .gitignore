@@ -31,3 +31,7 @@ dist-ssr
 /backups
 /seed.sql
 /design
+
+# scripts/trip-cli/new-trip.sh 本機快取的 VAPID 金鑰（同帳號多趟行程要共用同一組），
+# 是機密，不可進版控——見 scripts/trip-cli/README.md
+/.trip-cli-cache
