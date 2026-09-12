@@ -40,7 +40,7 @@ trap 'restore_local_trip "$BACKUP"' EXIT
 log_info "build……"
 npm run build
 
-log_info "部署到 $PAGES_PROJECT（--branch $PROD_BRANCH --profile $PROFILE）……"
+log_info "部署到 ${PAGES_PROJECT}（--branch ${PROD_BRANCH} --profile ${PROFILE}）……"
 npx wrangler pages deploy dist --project-name "$PAGES_PROJECT" --branch "$PROD_BRANCH" --profile "$PROFILE"
 
 verify_latest_is_production "$PAGES_PROJECT" "$PROFILE"

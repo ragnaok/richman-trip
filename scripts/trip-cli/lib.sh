@@ -45,8 +45,8 @@ load_trip_conf() {
   local trip="$1"
   local conf="$LOCAL_TRIPS_DIR/$trip/trip.conf"
   if [ ! -f "$conf" ]; then
-    log_err "找不到 $conf，這個行程還沒用 new-trip.sh 設定過，或是拼字打錯了，"
-    log_err "也可能是這台機器沒有 local-trips/$trip（本機素材不進 git，換機器要自己搬過去）。"
+    log_err "找不到 ${conf}，這個行程還沒用 new-trip.sh 設定過，或是拼字打錯了，"
+    log_err "也可能是這台機器沒有 local-trips/${trip}（本機素材不進 git，換機器要自己搬過去）。"
     exit 1
   fi
   # shellcheck source=/dev/null
@@ -86,7 +86,7 @@ apply_local_trip() {
   local trip="$1"
   local trip_dir="$LOCAL_TRIPS_DIR/$trip"
   if [ ! -d "$trip_dir" ]; then
-    log_err "找不到 $trip_dir。"
+    log_err "找不到 ${trip_dir}。"
     exit 1
   fi
 
