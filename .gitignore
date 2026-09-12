@@ -32,6 +32,7 @@ dist-ssr
 /seed.sql
 /design
 
-# scripts/trip-cli/new-trip.sh 本機快取的 VAPID 金鑰（同帳號多趟行程要共用同一組），
-# 是機密，不可進版控——見 scripts/trip-cli/README.md
+# trip-cli：每趟行程的本機素材（wrangler.toml/trip.conf/favicon/hero-photo 等）
+# 跟本機快取的 VAPID 金鑰，刻意不進版控——見 scripts/trip-cli/README.md
+/local-trips
 /.trip-cli-cache

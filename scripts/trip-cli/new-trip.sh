@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# 開一趟新行程：建 D1、灌 schema、建 Pages 專案、寫 deploy/<trip>/ 設定、設
-# Secrets、視情況接上 worker-cron 推播。跑完用 scripts/trip-cli/deploy-trip.sh
+# 開一趟新行程：建 D1、灌 schema、建 Pages 專案、寫 local-trips/<trip>/ 設定、
+# 設 Secrets、視情況接上 worker-cron 推播。跑完用 scripts/trip-cli/deploy-trip.sh
 # 部署。
+#
+# 每趟行程的素材（wrangler.toml/trip.conf/favicon 等）只存在本機 local-trips/
+# 底下，刻意不進 git——main 上不會出現任何真實行程的痕跡，換一台機器部署同一趟
+# 行程要自己把 local-trips/<trip>/ 搬過去（見 scripts/trip-cli/README.md）。
 #
 # 用法：scripts/trip-cli/new-trip.sh <trip-slug>
 # 例如：scripts/trip-cli/new-trip.sh hokkaido
@@ -22,17 +26,13 @@ if ! [[ "$TRIP" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
 fi
 
 cd "$REPO_ROOT"
-require_clean_git
 
-# 不能用「deploy/$TRIP 存不存在」判斷這趟行程開過沒有：deploy/<trip>/ 只存在於
-# 該行程自己的分支上，main（或其他分支）的工作目錄裡本來就看不到，不管有沒有
-# 開過都一樣是空的。用 git branch 是不是已經有這個名字才對得起「全域、跟目前
-# checkout 到哪個分支無關」這個要求。
-if git show-ref --verify --quiet "refs/heads/$TRIP"; then
-  log_err "分支 $TRIP 已經存在，這趟行程是不是已經開過了？"
+if [ -d "$LOCAL_TRIPS_DIR/$TRIP" ]; then
+  log_err "$LOCAL_TRIPS_DIR/$TRIP 已經存在，這趟行程是不是已經開過了？"
   exit 1
 fi
 
+require_clean_git
 log_info "切到 main 並更新到最新……"
 git checkout main
 if ! git pull --ff-only; then
@@ -70,21 +70,17 @@ fi
 cat <<SUMMARY
 
 即將執行：
-  1. git checkout -b $TRIP（從 main）
-  2. wrangler d1 create $D1_NAME --profile $PROFILE
-  3. wrangler d1 execute $D1_NAME --remote --profile $PROFILE --file=schema.sql
-  4. wrangler pages project create $PAGES_PROJECT --production-branch $PROD_BRANCH --profile $PROFILE
-  5. 寫 deploy/$TRIP/wrangler.toml、deploy/$TRIP/trip.conf
-  6. 設 Secrets：SESSION_SECRET（自動產生）、PW_SHARED、GEMINI_API_KEY（互動輸入）
-  7. VAPID：$([ "$SAME_ACCOUNT" = 1 ] && echo "沿用同帳號既有金鑰（會請你貼上）" || echo "產生新的一組")
-  8. worker-cron：$([ "$SAME_ACCOUNT" = 1 ] && echo "自動加 D1 binding + TRIPS 項目並部署、commit 到 main" || echo "印手動步驟，不自動執行")
+  1. wrangler d1 create $D1_NAME --profile $PROFILE
+  2. wrangler d1 execute $D1_NAME --remote --profile $PROFILE --file=schema.sql
+  3. wrangler pages project create $PAGES_PROJECT --production-branch $PROD_BRANCH --profile $PROFILE
+  4. 寫 local-trips/$TRIP/（wrangler.toml、trip.conf、title.txt；不進 git）
+  5. 設 Secrets：SESSION_SECRET（自動產生）、PW_SHARED、GEMINI_API_KEY（互動輸入）
+  6. VAPID：$([ "$SAME_ACCOUNT" = 1 ] && echo "沿用同帳號既有金鑰（會請你貼上）" || echo "產生新的一組")
+  7. worker-cron：$([ "$SAME_ACCOUNT" = 1 ] && echo "自動加 D1 binding + TRIPS 項目並部署、commit 到 main" || echo "印手動步驟，不自動執行")
 SUMMARY
 confirm_yes "上面這些會建立雲端資源並寫入本機檔案。"
 
-# --- 2. git 分支 ---
-git checkout -b "$TRIP"
-
-# --- 3. D1 ---
+# --- 2. D1 ---
 log_info "建立 D1「$D1_NAME」……"
 D1_OUTPUT="$(npx wrangler d1 create "$D1_NAME" --profile "$PROFILE" 2>&1)" || {
   echo "$D1_OUTPUT"
@@ -94,25 +90,23 @@ D1_OUTPUT="$(npx wrangler d1 create "$D1_NAME" --profile "$PROFILE" 2>&1)" || {
 echo "$D1_OUTPUT"
 DATABASE_ID="$(echo "$D1_OUTPUT" | grep -oE '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' | head -1 || true)"
 if [ -z "$DATABASE_ID" ]; then
-  log_err "沒能從輸出裡解析出 database_id，去上面的輸出手動複製，填進 deploy/$TRIP/wrangler.toml。"
+  log_err "沒能從輸出裡解析出 database_id，去上面的輸出手動複製，填進 local-trips/$TRIP/wrangler.toml。"
   DATABASE_ID="REPLACE_WITH_REAL_D1_DATABASE_ID"
 fi
 log_ok "database_id = $DATABASE_ID"
 
-# --- 4. 灌 schema ---
+# --- 3. 灌 schema ---
 log_info "對 $D1_NAME 灌 schema.sql（正式環境）……"
 npx wrangler d1 execute "$D1_NAME" --remote --profile "$PROFILE" --file=schema.sql
 
-# --- 5. Pages 專案 ---
+# --- 4. Pages 專案 ---
 log_info "建立 Pages 專案 $PAGES_PROJECT（production branch: $PROD_BRANCH）……"
 npx wrangler pages project create "$PAGES_PROJECT" --production-branch "$PROD_BRANCH" --profile "$PROFILE"
 
-# --- 6. deploy/<trip>/ 設定檔 ---
-mkdir -p "deploy/$TRIP"
-cat > "deploy/$TRIP/wrangler.toml" <<TOML
-# ${TRIP} 的部署設定，由 scripts/trip-cli/new-trip.sh 產生。
-# 用法見 scripts/trip-cli/deploy-trip.sh：部署前暫時覆蓋根目錄 wrangler.toml、
-# 部署完立刻換回，不要直接拿這份 --config 用（wrangler pages deploy 不支援）。
+# --- 5. local-trips/<trip>/ 設定檔 ---
+mkdir -p "$LOCAL_TRIPS_DIR/$TRIP/assets"
+cat > "$LOCAL_TRIPS_DIR/$TRIP/wrangler.toml" <<TOML
+# ${TRIP} 的部署設定，由 scripts/trip-cli/new-trip.sh 產生。本機檔案，不進 git。
 name = "${PAGES_PROJECT}"
 compatibility_date = "2026-01-01"
 pages_build_output_dir = "dist"
@@ -123,18 +117,23 @@ database_name = "${D1_NAME}"
 database_id = "${DATABASE_ID}"
 TOML
 
-cat > "deploy/$TRIP/trip.conf" <<CONF
-# ${TRIP} 的部署身分設定（非機密，可進版控），由 scripts/trip-cli/new-trip.sh 產生。
+cat > "$LOCAL_TRIPS_DIR/$TRIP/trip.conf" <<CONF
+# ${TRIP} 的部署身分設定，由 scripts/trip-cli/new-trip.sh 產生。本機檔案，不進 git。
 PROFILE=${PROFILE}
 PAGES_PROJECT=${PAGES_PROJECT}
 PROD_BRANCH=${PROD_BRANCH}
 D1_NAME=${D1_NAME}
 CONF
-log_ok "已寫入 deploy/$TRIP/wrangler.toml、deploy/$TRIP/trip.conf"
-git add "deploy/$TRIP/wrangler.toml" "deploy/$TRIP/trip.conf"
-git commit -m "新增 ${TRIP} 的部署設定"
 
-# --- 7. Secrets ---
+printf '這趟行程的標題（index.html <title>／加到主畫面的名稱，之後也可以在設定頁改）： '
+read -r TRIP_TITLE
+echo "$TRIP_TITLE" > "$LOCAL_TRIPS_DIR/$TRIP/title.txt"
+
+log_ok "已寫入 local-trips/$TRIP/（wrangler.toml、trip.conf、title.txt）。"
+log_warn "favicon.png／icon-192.png／icon-512.png／hero-photo.jpg 記得手動放進"
+log_warn "local-trips/$TRIP/assets/（沒放的就維持範本預設圖，不強制每項都要有）。"
+
+# --- 6. Secrets ---
 log_info "設定 Secrets……"
 SESSION_SECRET="$(openssl rand -base64 32)"
 echo "$SESSION_SECRET" | npx wrangler pages secret put SESSION_SECRET --project-name "$PAGES_PROJECT" --profile "$PROFILE"
@@ -157,7 +156,7 @@ else
   log_warn "GEMINI_API_KEY 先跳過，「用 Gemini 帶入景點資訊」那個功能會不能用，之後再補。"
 fi
 
-# --- 8. VAPID ---
+# --- 7. VAPID ---
 CACHE_DIR="$REPO_ROOT/.trip-cli-cache/$PROFILE"
 mkdir -p "$CACHE_DIR"
 VAPID_CACHE="$CACHE_DIR/vapid.json"
@@ -197,11 +196,10 @@ echo "$VAPID_PUBLIC_KEY" | npx wrangler pages secret put VAPID_PUBLIC_KEY --proj
 echo "$VAPID_PRIVATE_KEY_JSON" | npx wrangler pages secret put VAPID_PRIVATE_KEY --project-name "$PAGES_PROJECT" --profile "$PROFILE"
 log_ok "VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY 已設定。"
 
-# --- 9. worker-cron ---
+# --- 8. worker-cron ---
 if [ "$SAME_ACCOUNT" = 1 ]; then
   log_info "同帳號已有既有行程，自動接上 worker-cron……"
   BINDING="DB_$(echo "$TRIP" | tr '[:lower:]-' '[:upper:]_')"
-  # 在最後一組 [[d1_databases]] 區塊後面接一組新的（簡單起見直接 append 在檔尾）。
   cat >> worker-cron/wrangler.toml <<WCTOML
 
 [[d1_databases]]
@@ -234,21 +232,11 @@ PYEOF
   log_info "部署 worker-cron……"
   (cd worker-cron && npx wrangler deploy --profile "$PROFILE")
 
-  log_info "把 worker-cron 的改動、登記檔 commit 到 main……"
-  CURRENT_BRANCH="$(git branch --show-current)"
-  git checkout main
-  register_trip "$TRIP" "$PROFILE"
+  log_info "把 worker-cron 的改動 commit 到 main……"
   git add worker-cron/wrangler.toml worker-cron/src/index.ts
-  git commit -m "worker-cron: 加上 ${TRIP} 的 D1 binding；登記新行程"
-  git checkout "$CURRENT_BRANCH"
+  git commit -m "worker-cron: 加上 ${TRIP} 的 D1 binding"
   log_ok "worker-cron 已更新並部署，改動已 commit 到 main。"
 else
-  log_info "把行程登記檔 commit 到 main（不含 worker-cron，避免污染既有帳號設定）……"
-  CURRENT_BRANCH="$(git branch --show-current)"
-  git checkout main
-  register_trip "$TRIP" "$PROFILE"
-  git commit -m "登記新行程 ${TRIP}（profile=${PROFILE}）"
-  git checkout "$CURRENT_BRANCH"
   cat <<MANUAL
 
 $(log_warn "全新帳號，worker-cron 需要手動部署一份（跟其他帳號完全獨立）：")
@@ -277,7 +265,7 @@ cat <<DONE
 
 $(log_ok "行程 $TRIP 設定完成。")
 下一步：
+  - 把 favicon／icon-192／icon-512／hero-photo 放進 local-trips/$TRIP/assets/（沒有的可以先跳過）
   - 跑 scripts/trip-cli/deploy-trip.sh $TRIP 做第一次部署
   - 部署完，登入後到設定頁填目的地標題／旅遊日期／住宿地點
-  - favicon／icon／hero-photo 這些建置時寫死的靜態檔，記得在 $TRIP 分支上換成這趟行程的圖
 DONE

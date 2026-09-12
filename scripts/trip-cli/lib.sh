@@ -4,6 +4,11 @@
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# 每趟行程的本機素材（wrangler.toml/trip.conf/favicon 等等），刻意不進 git——main
+# 上因此永遠不會出現任何真實行程的痕跡，這台機器以外的裝置要部署同一趟行程，
+# 這個資料夾要自己另外搬過去（見 scripts/trip-cli/README.md）。
+LOCAL_TRIPS_DIR="$REPO_ROOT/local-trips"
+
 log_info() { printf '\033[36m▸\033[0m %s\n' "$*"; }
 log_warn() { printf '\033[33m⚠\033[0m %s\n' "$*"; }
 log_err()  { printf '\033[31m✘\033[0m %s\n' "$*" >&2; }
@@ -22,8 +27,8 @@ confirm_yes() {
   fi
 }
 
-# 目前工作目錄必須是乾淨的（沒有未提交的變更），否則後面的 git checkout/rebase
-# 有弄丟工作的風險。
+# 目前工作目錄必須是乾淨的（沒有未提交的變更），否則後面的 git checkout 有弄丟
+# 工作的風險（deploy-trip.sh 換入行程素材、跑完又換回去，也得從乾淨狀態開始）。
 require_clean_git() {
   cd "$REPO_ROOT"
   if [ -n "$(git status --short)" ]; then
@@ -33,23 +38,15 @@ require_clean_git() {
   fi
 }
 
-# deploy/<trip>/trip.conf 只存在於各自的行程分支上，main 上永遠看不到（這是刻意
-# 的：main 是通用範本，不代表任何真實行程）。但 new-trip.sh 判斷「這個 profile
-# 是不是已經有其他行程」這件事一定要在 main 上、開新分支之前就知道答案，沒辦法
-# 靠掃 deploy/*/ 現在的工作目錄。所以另外維護一份輕量登記檔
-# scripts/trip-cli/trips.registry（純粹是「行程代號=profile」的對照表，不含任何
-# 密碼/database_id 之類的機密或行程資料），commit 在 main 上，被視為工具自己的
-# 帳本，不算 CLAUDE.md 說的「行程資料」。
-REGISTRY_FILE="$REPO_ROOT/scripts/trip-cli/trips.registry"
-
-# 讀一個 trip.conf，把裡面的變數塞進目前 shell（PROFILE/PAGES_PROJECT/PROD_BRANCH/D1_NAME）。
-# 只能在已經 checkout 到該行程分支之後呼叫（trip.conf 是那個分支才有的檔案）。
+# 讀一個行程的 trip.conf，把裡面的變數塞進目前 shell
+# （PROFILE/PAGES_PROJECT/PROD_BRANCH/D1_NAME）。
 # shellcheck disable=SC1090
 load_trip_conf() {
   local trip="$1"
-  local conf="$REPO_ROOT/deploy/$trip/trip.conf"
+  local conf="$LOCAL_TRIPS_DIR/$trip/trip.conf"
   if [ ! -f "$conf" ]; then
-    log_err "找不到 $conf，這個行程還沒用 new-trip.sh 設定過，或是拼字打錯了。"
+    log_err "找不到 $conf，這個行程還沒用 new-trip.sh 設定過，或是拼字打錯了，"
+    log_err "也可能是這台機器沒有 local-trips/$trip（本機素材不進 git，換機器要自己搬過去）。"
     exit 1
   fi
   # shellcheck source=/dev/null
@@ -58,63 +55,100 @@ load_trip_conf() {
 
 # 找出跟給定 profile 共用同一個 Cloudflare 帳號、且不是 $exclude_trip 本身的既有行程，
 # 一行一個行程代號。用來判斷「這個帳號是不是第一趟行程」（決定 VAPID 要不要新產生、
-# worker-cron 要不要自動接上）。讀的是 main 上的登記檔，不是各分支的 trip.conf。
+# worker-cron 要不要自動接上）。直接掃本機的 local-trips/*/trip.conf，不用另外維護
+# 登記檔——這些設定檔本來就在同一台機器、同一個目錄樹下，不像舊版分支模式那樣
+# 「別的行程的設定檔在別的分支看不到」。
 find_profile_siblings() {
   local profile="$1"
   local exclude_trip="${2:-}"
-  [ -f "$REGISTRY_FILE" ] || return 0
-  local line trip trip_profile
-  while IFS= read -r line; do
-    [ -z "$line" ] && continue
-    case "$line" in \#*) continue ;; esac
-    trip="${line%%=*}"
-    trip_profile="${line#*=}"
+  local conf trip trip_profile
+  [ -d "$LOCAL_TRIPS_DIR" ] || return 0
+  while IFS= read -r conf; do
+    [ -z "$conf" ] && continue
+    trip="$(basename "$(dirname "$conf")")"
     [ "$trip" = "$exclude_trip" ] && continue
+    trip_profile="$(grep -E '^PROFILE=' "$conf" | head -1 | cut -d= -f2- || true)"
     if [ "$trip_profile" = "$profile" ]; then
       echo "$trip"
     fi
-  done < "$REGISTRY_FILE"
+  done < <(find "$LOCAL_TRIPS_DIR" -mindepth 2 -maxdepth 2 -name 'trip.conf' 2>/dev/null || true)
 }
 
-# 登記一個行程（trip=profile）到 main 上的登記檔並 commit——呼叫端負責確保目前
-# checkout 在 main 上。
-register_trip() {
+# 部署前把根目錄的 wrangler.toml／public 靜態檔／index.html 標題換成這趟行程在
+# local-trips/<trip>/ 裡的版本，只換「行程資料夾裡真的有放」的檔案——沒放的（例如
+# 沒自訂 favicon）就維持範本預設，不強迫每趟行程都要準備一整套素材。
+# 回傳一個備份目錄路徑；用法：
+#   backup="$(apply_local_trip "$trip")"
+#   trap 'restore_local_trip "$backup"' EXIT
+apply_local_trip() {
   local trip="$1"
-  local profile="$2"
-  mkdir -p "$(dirname "$REGISTRY_FILE")"
-  touch "$REGISTRY_FILE"
-  if ! grep -qE "^${trip}=" "$REGISTRY_FILE"; then
-    echo "${trip}=${profile}" >> "$REGISTRY_FILE"
-    sort -o "$REGISTRY_FILE" "$REGISTRY_FILE"
+  local trip_dir="$LOCAL_TRIPS_DIR/$trip"
+  if [ ! -d "$trip_dir" ]; then
+    log_err "找不到 $trip_dir。"
+    exit 1
   fi
-  git add "$REGISTRY_FILE"
+
+  local backup_dir
+  backup_dir="$(mktemp -d)"
+  : > "$backup_dir/manifest"
+
+  local rel src
+  for rel in public/favicon.png public/icon-192.png public/icon-512.png public/hero-photo.jpg wrangler.toml; do
+    # wrangler.toml 放在 trip_dir 根目錄，其餘素材放在 trip_dir/assets/ 底下。
+    if [ "$rel" = "wrangler.toml" ]; then
+      src="$trip_dir/wrangler.toml"
+    else
+      src="$trip_dir/assets/$(basename "$rel")"
+    fi
+    [ -f "$src" ] || continue
+    mkdir -p "$backup_dir/$(dirname "$rel")"
+    cp "$REPO_ROOT/$rel" "$backup_dir/$rel"
+    cp "$src" "$REPO_ROOT/$rel"
+    echo "$rel" >> "$backup_dir/manifest"
+  done
+
+  if [ -f "$trip_dir/title.txt" ]; then
+    cp "$REPO_ROOT/index.html" "$backup_dir/index.html"
+    echo "index.html" >> "$backup_dir/manifest"
+    local title
+    title="$(cat "$trip_dir/title.txt")"
+    python3 - "$REPO_ROOT/index.html" "$title" <<'PYEOF'
+import re, sys
+path, title = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    content = f.read()
+content = re.sub(r"<title>.*?</title>", f"<title>{title}</title>", content, count=1)
+content = re.sub(
+    r'(apple-mobile-web-app-title" content=")[^"]*(")',
+    rf"\1{title}\2",
+    content,
+    count=1,
+)
+with open(path, "w", encoding="utf-8") as f:
+    f.write(content)
+PYEOF
+  fi
+
+  echo "$backup_dir"
 }
 
-# 部署前把根目錄 wrangler.toml 換成該行程的版本，部署後（不管成功或失敗）換回來。
-# 用法：
-#   backup="$(swap_wrangler_toml "$trip")"
-#   trap 'restore_wrangler_toml "$backup"' EXIT
-swap_wrangler_toml() {
-  local trip="$1"
-  local backup
-  backup="$(mktemp)"
-  cp "$REPO_ROOT/wrangler.toml" "$backup"
-  cp "$REPO_ROOT/deploy/$trip/wrangler.toml" "$REPO_ROOT/wrangler.toml"
-  echo "$backup"
-}
-
-restore_wrangler_toml() {
-  local backup="$1"
-  if [ -f "$backup" ]; then
-    cp "$backup" "$REPO_ROOT/wrangler.toml"
-    rm -f "$backup"
+restore_local_trip() {
+  local backup_dir="$1"
+  [ -n "$backup_dir" ] && [ -d "$backup_dir" ] || return 0
+  local rel
+  if [ -f "$backup_dir/manifest" ]; then
+    while IFS= read -r rel; do
+      [ -z "$rel" ] && continue
+      cp "$backup_dir/$rel" "$REPO_ROOT/$rel"
+    done < "$backup_dir/manifest"
   fi
+  rm -rf "$backup_dir"
   cd "$REPO_ROOT"
-  if [ -n "$(git diff --stat -- wrangler.toml)" ]; then
-    log_warn "wrangler.toml 換回來後跟版控內容不一致，請手動檢查："
-    git diff -- wrangler.toml
+  if [ -n "$(git status --short -- public/ index.html wrangler.toml)" ]; then
+    log_warn "換回範本內容後跟版控內容不一致，請手動檢查："
+    git status --short -- public/ index.html wrangler.toml
   else
-    log_ok "wrangler.toml 已換回原本內容（git diff 乾淨）。"
+    log_ok "本機素材已換回範本內容（git status 乾淨）。"
   fi
 }
 
