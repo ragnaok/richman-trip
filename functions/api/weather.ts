@@ -2,7 +2,8 @@
 //
 // 地區與日期不寫死：讀 D1 hotels（設定頁「住宿地點」的緯經度）與 settings 的
 // tripStart/tripEnd，每間有座標的飯店各打一次 forecast，再依自己的入住/退房日期
-// 把每日資料對映回 'M/D' day key（同 StoredHotel 的 checkin<=day<checkout 規則）。
+// 把每日資料對映回 'M/D' day key（同 StoredHotel 的 checkin<=day<checkout 規則，
+// 但行程最後一天例外——見 overlapRange 的 isLastHotel 參數）。
 // 沒有任何飯店填座標時回空 days，讓前端自己 fallback。
 //
 // caches.default 快取 30 分鐘，cache key 帶飯店設定簽章。單一飯店請求失敗（含超出
@@ -39,11 +40,20 @@ interface OpenMeteoResponse {
 }
 
 // 把查詢窗口收斂到「行程區間 ∩ 入住區間」，避免打超出這間飯店入住期間的多餘請求。
-function overlapRange(hotel: HotelRow, start: string, end: string): { start: string; end: string } | null {
+// isLastHotel：行程最後一天沒有下一間飯店接手，退房日當天仍在這間飯店附近活動到
+// 出發，所以最後一間飯店不套用「checkout 當天不算」的排除規則，讓它一路涵蓋到
+// 行程結束日，不然最後一天會落在所有飯店的住宿區間外、查不到天氣。
+function overlapRange(
+  hotel: HotelRow,
+  start: string,
+  end: string,
+  isLastHotel: boolean,
+): { start: string; end: string } | null {
   const s = hotel.checkin > start ? hotel.checkin : start
   // checkout 是退房日（exclusive），Open-Meteo 的 end_date 是 inclusive，所以要減一天。
   const checkoutMinusOne = hotel.checkout ? addDays(hotel.checkout, -1) : end
-  const e = checkoutMinusOne < end ? checkoutMinusOne : end
+  const cap = isLastHotel ? end : checkoutMinusOne
+  const e = cap < end ? cap : end
   if (!s || !e || s > e) return null
   return { start: s, end: e }
 }
@@ -55,9 +65,14 @@ function addDays(iso: string, delta: number): string {
 }
 
 /** 一間飯店（入住期間）的每日資料，keyed by 'M/D'。失敗（含超出預報窗）回傳 null。 */
-async function fetchHotelWeather(hotel: HotelRow, start: string, end: string): Promise<Record<string, DayWeather> | null> {
+async function fetchHotelWeather(
+  hotel: HotelRow,
+  start: string,
+  end: string,
+  isLastHotel: boolean,
+): Promise<Record<string, DayWeather> | null> {
   if (hotel.lat == null || hotel.lon == null) return null
-  const range = overlapRange(hotel, start, end)
+  const range = overlapRange(hotel, start, end, isLastHotel)
   if (!range) return null
 
   const params = new URLSearchParams({
@@ -126,8 +141,19 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const cached = await cache.match(cacheKey)
   if (cached) return cached
 
+  // 最後一間飯店＝ checkout 最晚的那間，退房日當天不套用「checkout 排除」規則
+  // （見 overlapRange 註解），讓行程最後一天也查得到天氣。
+  let lastHotelId: string | null = null
+  let latestCheckout = ''
+  for (const h of hotels) {
+    if (h.checkout > latestCheckout) {
+      latestCheckout = h.checkout
+      lastHotelId = h.id
+    }
+  }
+
   const hotelResults: Array<Record<string, DayWeather> | null> = await Promise.all(
-    hotels.map((h) => fetchHotelWeather(h, start, end)),
+    hotels.map((h) => fetchHotelWeather(h, start, end, h.id === lastHotelId)),
   )
 
   const days: Record<string, DayWeather> = {}
