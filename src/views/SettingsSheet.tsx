@@ -67,13 +67,12 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
     destTitleDraft !== destTitle || destSubtitleDraft !== destSubtitle || regionHintDraft !== geminiRegionHint
   const rateDirty = rateDraft !== rate
 
-  function saveDestInfo() {
+  // 目的地跟記帳都是單純防呆用的草稿（不像旅遊日期改了可能要刪行程、需要獨立的
+  // 二次確認），共用一顆「儲存」。
+  function saveDestAndRate() {
     if (destTitleDraft !== destTitle) setSetting('destTitle', destTitleDraft)
     if (destSubtitleDraft !== destSubtitle) setSetting('destSubtitle', destSubtitleDraft)
     if (regionHintDraft !== geminiRegionHint) setSetting('geminiRegionHint', regionHintDraft)
-  }
-
-  function saveRate() {
     if (rateDirty) setRate(rateDraft)
   }
 
@@ -318,11 +317,18 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
             placeholder="例：日本東京都周邊"
           />
         </div>
+        <div className="edit-section-label" style={{ marginTop: 14 }}>
+          記帳
+        </div>
+        <div className="field settings-rate-field" style={{ marginTop: 10 }}>
+          <label>匯率 JPY→TWD</label>
+          <input className="input" value={rateDraft} onChange={(e) => setRateDraft(e.target.value)} />
+        </div>
         <button
           type="button"
           className="btn btn-primary btn-block settings-push-btn"
-          disabled={!destDirty}
-          onClick={saveDestInfo}
+          disabled={!destDirty && !rateDirty}
+          onClick={saveDestAndRate}
         >
           儲存
         </button>
@@ -470,22 +476,6 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
             </div>
           </div>
         )}
-      </div>
-
-      <div className="settings-section">
-        <div className="edit-section-label">記帳</div>
-        <div className="field settings-rate-field" style={{ marginTop: 10 }}>
-          <label>匯率 JPY→TWD</label>
-          <input className="input" value={rateDraft} onChange={(e) => setRateDraft(e.target.value)} />
-        </div>
-        <button
-          type="button"
-          className="btn btn-primary btn-block settings-push-btn"
-          disabled={!rateDirty}
-          onClick={saveRate}
-        >
-          儲存
-        </button>
       </div>
 
       <div className="settings-section">
