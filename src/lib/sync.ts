@@ -239,6 +239,25 @@ function payloadForOp(op: OutboxOp): Record<string, unknown> {
   return op.row
 }
 
+/** 每張表的自然鍵，跟 pull() 那邊 upsertIfNewer 的 getKey 對應——settings/cats/
+ * members/payment_methods 的主鍵不是 id，用 row.id 比對永遠是 undefined，會把
+ * 同一張表所有 op 混成同一把 key（例如同時改標題、副標題會被當成同一筆），導致
+ * outbox 清除時把還沒真的寫入成功的項目誤判成已送達而刪掉，那筆編輯就悄悄消失。 */
+function naturalKey(table: OutboxOp['table'], row: Record<string, unknown>): string {
+  switch (table) {
+    case 'cats':
+      return `${String(row.kind)}:${String(row.name)}`
+    case 'settings':
+      return String(row.k)
+    case 'members':
+      return String(row.role)
+    case 'payment_methods':
+      return String(row.name)
+    default:
+      return String(row.id)
+  }
+}
+
 async function pushOnce(): Promise<'empty' | 'ok' | 'partial' | 'error'> {
   if (!isLoggedIn()) return 'empty'
   const outbox = await db.getOutbox()
@@ -259,11 +278,13 @@ async function pushOnce(): Promise<'empty' | 'ok' | 'partial' | 'error'> {
     return 'error'
   }
 
-  // 用 table+id 比對已確認送達的項目並清掉；未被接受的（LWW 輸掉或格式有誤）留在
+  // 用 table+自然鍵比對已確認送達的項目並清掉；未被接受的（LWW 輸掉或格式有誤）留在
   // 佇列下次重送——重送舊版本沒有副作用，伺服器會照樣忽略。
-  const writtenKeys = new Set(written.map((w) => `${w.table}:${String(w.row.id ?? '')}`))
+  const writtenKeys = new Set(
+    written.map((w) => `${w.table}:${naturalKey(w.table as OutboxOp['table'], w.row)}`),
+  )
   const toDelete = outbox
-    .filter((op) => writtenKeys.has(`${op.table}:${String(op.row.id ?? '')}`))
+    .filter((op) => writtenKeys.has(`${op.table}:${naturalKey(op.table, op.row)}`))
     .map((op) => op.opId!)
     .filter((id) => id !== undefined)
   if (toDelete.length > 0) await db.deleteOps(toDelete)
