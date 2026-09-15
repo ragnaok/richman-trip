@@ -53,6 +53,30 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
   const upsertHotel = useStore((s) => s.upsertHotel)
   const deleteHotel = useStore((s) => s.deleteHotel)
 
+  // 標題／副標題／地區提示／匯率改成本機草稿＋按「儲存」才真的寫回 store（進而
+  // 觸發 IndexedDB／同步）。原本每個字都 onChange 直接 setSetting/setRate，打字
+  // 打到一半（例如「0.206」打完「0.20」那個瞬間）也會被當成一次完整的變更存
+  // 下去，使用者感覺像「只存了一半」。草稿只在設定頁重新打開時（元件重新
+  // mount）才會被目前 store 值重設，打開後外部同步進來的新值不會蓋掉正在編輯
+  // 的草稿。
+  const [destTitleDraft, setDestTitleDraft] = useState(destTitle)
+  const [destSubtitleDraft, setDestSubtitleDraft] = useState(destSubtitle)
+  const [regionHintDraft, setRegionHintDraft] = useState(geminiRegionHint)
+  const [rateDraft, setRateDraft] = useState(rate)
+  const destDirty =
+    destTitleDraft !== destTitle || destSubtitleDraft !== destSubtitle || regionHintDraft !== geminiRegionHint
+  const rateDirty = rateDraft !== rate
+
+  function saveDestInfo() {
+    if (destTitleDraft !== destTitle) setSetting('destTitle', destTitleDraft)
+    if (destSubtitleDraft !== destSubtitle) setSetting('destSubtitle', destSubtitleDraft)
+    if (regionHintDraft !== geminiRegionHint) setSetting('geminiRegionHint', regionHintDraft)
+  }
+
+  function saveRate() {
+    if (rateDirty) setRate(rateDraft)
+  }
+
   const [pendingDates, setPendingDates] = useState<{ start: string; end: string } | null>(null)
   const [droppedDays, setDroppedDays] = useState<string[]>([])
   const [pushEnabled, setPushEnabled] = useState(false)
@@ -275,25 +299,33 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
         <div className="edit-section-label">目的地</div>
         <div className="field" style={{ marginTop: 10 }}>
           <label>標題</label>
-          <input className="input" value={destTitle} onChange={(e) => setSetting('destTitle', e.target.value)} />
+          <input className="input" value={destTitleDraft} onChange={(e) => setDestTitleDraft(e.target.value)} />
         </div>
         <div className="field" style={{ marginTop: 10 }}>
           <label>副標題</label>
           <input
             className="input"
-            value={destSubtitle}
-            onChange={(e) => setSetting('destSubtitle', e.target.value)}
+            value={destSubtitleDraft}
+            onChange={(e) => setDestSubtitleDraft(e.target.value)}
           />
         </div>
         <div className="field" style={{ marginTop: 10 }}>
           <label>地區提示（景點頁「用 Gemini 帶入景點資訊」查詢用）</label>
           <input
             className="input"
-            value={geminiRegionHint}
-            onChange={(e) => setSetting('geminiRegionHint', e.target.value)}
+            value={regionHintDraft}
+            onChange={(e) => setRegionHintDraft(e.target.value)}
             placeholder="例：日本東京都周邊"
           />
         </div>
+        <button
+          type="button"
+          className="btn btn-primary btn-block settings-push-btn"
+          disabled={!destDirty}
+          onClick={saveDestInfo}
+        >
+          儲存
+        </button>
       </div>
 
       <div className="settings-section">
@@ -444,8 +476,16 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
         <div className="edit-section-label">記帳</div>
         <div className="field settings-rate-field" style={{ marginTop: 10 }}>
           <label>匯率 JPY→TWD</label>
-          <input className="input" value={rate} onChange={(e) => setRate(e.target.value)} />
+          <input className="input" value={rateDraft} onChange={(e) => setRateDraft(e.target.value)} />
         </div>
+        <button
+          type="button"
+          className="btn btn-primary btn-block settings-push-btn"
+          disabled={!rateDirty}
+          onClick={saveRate}
+        >
+          儲存
+        </button>
       </div>
 
       <div className="settings-section">
