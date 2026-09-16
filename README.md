@@ -104,14 +104,15 @@ wrangler pages deployment list --project-name my-trip   # 確認最新一筆落�
 
 ### Schema 異動
 
-D1 不支援自動 migration，本機與正式環境要手動各跑一次，且只能用不破壞既有資料的寫法（不要 `DROP`、不要改欄位型別）：
+D1 本身不支援自動 migration，但這個 repo 用 `migrations/*.sql` + `scripts/trip-cli/deploy-trip.sh` 補上了：改 `schema.sql` 的表結構時，同時在 `migrations/` 加一個新檔案（只能用不破壞既有資料的寫法，不要 `DROP`、不要改欄位型別，命名規則見 [migrations/README.md](migrations/README.md)）。下次對既有行程跑 `deploy-trip.sh` 時，會自動對正式環境的 D1 依序套用還沒套用過的檔案（套用紀錄存在 D1 自己的 `_migrations` 表，不會重複套用），套用前如果有東西要套會先自動備份。
+
+本機開發用的 D1（`--local`）不會自動套用，要跟著手動補一次：
 
 ```bash
-wrangler d1 execute my-trip --local  --command "ALTER TABLE ... ADD COLUMN ..."
-wrangler d1 execute my-trip --remote --command "ALTER TABLE ... ADD COLUMN ..."
+wrangler d1 execute my-trip --local --file=migrations/000N_檔名.sql
 ```
 
-改完務必同步更新 `schema.sql`。完整規則見 [CLAUDE.md](CLAUDE.md)。
+改完務必同步更新 `schema.sql`（`schema.sql` 要保持是「從零開始建表」的完整終態）。完整規則見 [CLAUDE.md](CLAUDE.md)。
 
 ### 備份
 
@@ -119,7 +120,7 @@ wrangler d1 execute my-trip --remote --command "ALTER TABLE ... ADD COLUMN ..."
 wrangler d1 export my-trip --remote --output backups/my-trip-remote-backup-$(date +%Y%m%d-%H%M%S).sql
 ```
 
-改動正式環境 schema 或跑任何批次資料修正前**先備份**。`backups/` 在 `main` 上是 gitignored；各行程分支自行決定是否進版控。
+改動正式環境 schema 或跑任何批次資料修正前**先備份**。`deploy-trip.sh` 每次部署都會自動先跑一次這個備份（不管有沒有新的 migration 要套用）；批次資料修正等其他不經過 `deploy-trip.sh` 的操作還是要自己手動跑。`backups/` 在 `main` 上是 gitignored；各行程分支自行決定是否進版控。
 
 ## 推播提醒（Web Push）部署
 

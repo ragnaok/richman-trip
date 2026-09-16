@@ -99,6 +99,10 @@ log_ok "database_id = $DATABASE_ID"
 log_info "對 $D1_NAME 灌 schema.sql（正式環境）……"
 npx wrangler d1 execute "$D1_NAME" --remote --profile "$PROFILE" --file=schema.sql
 
+# schema.sql 已經是所有 migration 疊加後的終態，這裡不用也不該再重跑一次
+# migrations/ 裡的檔案，直接標記成已套用（見 migrations/README.md）。
+mark_all_migrations_applied "$D1_NAME" "$PROFILE"
+
 # --- 4. Pages 專案 ---
 log_info "建立 Pages 專案 ${PAGES_PROJECT}（production branch: ${PROD_BRANCH}）……"
 npx wrangler pages project create "$PAGES_PROJECT" --production-branch "$PROD_BRANCH" --profile "$PROFILE"
