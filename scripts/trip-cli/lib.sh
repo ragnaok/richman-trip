@@ -186,7 +186,7 @@ d1_backup_remote() {
 run_pending_migrations() {
   local d1_name="$1" profile="$2"
   [ -d "$MIGRATIONS_DIR" ] || return 0
-  log_info "備份正式環境 D1（$d1_name）……"
+  log_info "備份正式環境 D1（${d1_name}）……"
   d1_backup_remote "$d1_name" "$profile"
   d1_ensure_migrations_table "$d1_name" "$profile"
   local applied
