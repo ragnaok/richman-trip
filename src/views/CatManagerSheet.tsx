@@ -70,7 +70,7 @@ export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; 
         </p>
 
         {catNames.map((name) => (
-          <div key={name} className="edit-list-row">
+          <div key={name} className="edit-list-row cat-mgr-row">
             {kind === 'money' && (
               <button
                 type="button"
@@ -78,7 +78,11 @@ export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; 
                 title="設為預設分類"
                 onClick={() => toggleDefault(name)}
               >
-                <Star size={14} weight={defaultMoneyCat === name ? 'fill' : 'duotone'} />
+                <Star
+                  size={14}
+                  weight={defaultMoneyCat === name ? 'fill' : 'duotone'}
+                  color={defaultMoneyCat === name ? 'var(--color-process-yellow)' : 'currentColor'}
+                />
               </button>
             )}
             <input
