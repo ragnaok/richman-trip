@@ -222,7 +222,6 @@ export default function MoneyTab() {
                         </div>
                       ))
                     )}
-                    <div className="money-settle-note">僅計入勾選分帳的項目</div>
                   </div>
                 </>
               )}

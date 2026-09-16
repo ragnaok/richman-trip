@@ -11,9 +11,10 @@ import type { Cat } from '../lib/types'
  * 刪除點垃圾桶立刻生效，deleteCat 會連同分類裡的項目一起刪除。
  *
  * 「預設分類」只有記帳（kind==='money'）才有：settings.defaultMoneyCat 存哪個分類要在
- * 新增支出時預選，同時間只有一個，UI 跟 toggle 邏輯照抄 PaymentMethodManagerSheet 的
- * defaultMethod（見該檔開頭註解）。改名/刪除目前是否為預設的分類時，跟 defaultMethod
- * 一樣不特別同步處理——ExpenseSheet 會檢查 defaultMoneyCat 是否還在目前分類清單裡再套用。
+ * 新增支出時預選。永遠恰好一個——不能點掉變成沒有預設，只能點別的分類換掉，沒設定過
+ * 就視覺上退回目前清單第一個（effectiveDefault），跟 ExpenseSheet 的 fallback 邏輯一致。
+ * 改名/刪除目前是否為預設的分類時，跟 defaultMethod 一樣不特別同步處理——ExpenseSheet
+ * 會檢查 defaultMoneyCat 是否還在目前分類清單裡再套用。
  */
 export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; onClose: () => void }) {
   const catNames = useCatNames(kind)
@@ -25,7 +26,9 @@ export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; 
   const setSetting = useStore((s) => s.setSetting)
   const { toast, showToast } = useToast()
 
-  const toggleDefault = (name: string) => setSetting('defaultMoneyCat', defaultMoneyCat === name ? '' : name)
+  const effectiveDefault =
+    defaultMoneyCat && catNames.includes(defaultMoneyCat) ? defaultMoneyCat : catNames[0]
+  const setDefault = (name: string) => setSetting('defaultMoneyCat', name)
 
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -64,24 +67,21 @@ export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; 
             <X size={16} weight="duotone" />
           </button>
         </div>
-        <p className="edit-hint">
-          改名會一併套用到既有項目；刪除分類會連同其中的項目一起刪除。
-          {kind === 'money' && '設為預設的分類會顯示在新增支出時預選的分類，再點一次可取消。'}
-        </p>
+        <p className="edit-hint">改名會一併套用到既有項目；刪除分類會連同其中的項目一起刪除。</p>
 
         {catNames.map((name) => (
           <div key={name} className="edit-list-row cat-mgr-row">
             {kind === 'money' && (
               <button
                 type="button"
-                className={`method-mgr-default-btn${defaultMoneyCat === name ? ' is-default' : ''}`}
+                className={`method-mgr-default-btn${effectiveDefault === name ? ' is-default' : ''}`}
                 title="設為預設分類"
-                onClick={() => toggleDefault(name)}
+                onClick={() => setDefault(name)}
               >
                 <Star
                   size={14}
-                  weight={defaultMoneyCat === name ? 'fill' : 'duotone'}
-                  color={defaultMoneyCat === name ? 'var(--color-process-yellow)' : 'currentColor'}
+                  weight={effectiveDefault === name ? 'fill' : 'duotone'}
+                  color={effectiveDefault === name ? 'var(--color-process-yellow)' : 'currentColor'}
                 />
               </button>
             )}
