@@ -71,14 +71,10 @@ export default function PaymentMethodManagerSheet({ onClose }: { onClose: () => 
           </button>
         </div>
         <p className="edit-hint">
-          現金為預設方式，不可更名或刪除。信用卡可改名，未設定其他預設付款方式時會一直是預設。
-          設為預設的方式會顯示在新增支出畫面「現金」旁邊的槽位，再點一次「預設」可取消，恢復顯示信用卡。
+          現金為預設方式，不可更名或刪除。信用卡可改名，不可刪除。
+          設為預設的方式會顯示在新增支出畫面「現金」旁邊的位置。
           改名會套用到既有支出；刪除自訂方式後相關支出會改記為現金。
         </p>
-
-        <div className="edit-list-row">
-          <span className="method-mgr-cash-label">現金</span>
-        </div>
 
         <div className="edit-list-row">
           <button
