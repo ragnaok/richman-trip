@@ -27,12 +27,11 @@
 
 ### D1 schema
 
-D1 沒有自動 migration。改 schema 時：
+D1 本身沒有自動 migration，但 `migrations/*.sql` + `scripts/trip-cli/deploy-trip.sh` 補上了正式環境這一段（見 [migrations/README.md](migrations/README.md)）。改 schema 時：
 
 1. 只能用**不破壞既有資料**的寫法：`ALTER TABLE … ADD COLUMN`、`CREATE TABLE IF NOT EXISTS`。**不要 `DROP`、不要改欄位型別。**
-2. 本機與正式環境**各跑一次**（`--local` / `--remote`）。
-3. 回頭同步更新 `schema.sql`。
-4. 動正式環境前**先備份**（見 README「備份」）。
+2. `schema.sql` 加上異動的同時，在 `migrations/` 加一個新的編號檔案（同樣的 SQL）。正式環境交給 `deploy-trip.sh` 下次部署自動套用（套用紀錄存在該 D1 的 `_migrations` 表，不會重複套用，套用前有東西要套會自動先備份）；本機 `--local` 的 D1 還是要自己手動補跑一次。
+3. `schema.sql` 要保持是「從零開始建表」的完整終態，跟 `migrations/` 的疊加結果要對得上。
 
 ### reminders 是衍生快取（`worker-cron/src/index.ts`）
 

@@ -3,6 +3,7 @@
 # 每支呼叫端自己先 `set -euo pipefail` 再 source 這份檔案。
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+MIGRATIONS_DIR="$REPO_ROOT/migrations"
 
 # 每趟行程的本機素材（wrangler.toml/trip.conf/favicon 等等），刻意不進 git——main
 # 上因此永遠不會出現任何真實行程的痕跡，這台機器以外的裝置要部署同一趟行程，
@@ -152,6 +153,73 @@ restore_local_trip() {
   else
     log_ok "本機素材已換回範本內容（git status 乾淨）。"
   fi
+}
+
+# 確保 D1 上的 _migrations 記錄表存在（記 migrations/*.sql 哪些已經套用過）。
+d1_ensure_migrations_table() {
+  local d1_name="$1" profile="$2"
+  npx wrangler d1 execute "$d1_name" --remote --profile "$profile" \
+    --command "CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at INTEGER)" >/dev/null
+}
+
+# 列出這個 D1 已經套用過的 migration 檔名，一行一個。
+d1_applied_migrations() {
+  local d1_name="$1" profile="$2"
+  npx wrangler d1 execute "$d1_name" --remote --profile "$profile" \
+    --command "SELECT name FROM _migrations ORDER BY name" --json \
+    | python3 -c "import json,sys; print('\n'.join(r['name'] for r in json.load(sys.stdin)[0]['results']))"
+}
+
+# 動正式環境 D1 前先備份（見 README「備份」）。獨立成一個函式，讓
+# run_pending_migrations 每次執行都無條件先跑一次，不依賴「有沒有偵測到
+# pending migration」這個判斷——就算判斷邏輯本身有 bug，備份還是會做。
+d1_backup_remote() {
+  local d1_name="$1" profile="$2"
+  mkdir -p "$REPO_ROOT/backups"
+  npx wrangler d1 export "$d1_name" --remote --profile "$profile" \
+    --output "$REPO_ROOT/backups/${d1_name}-remote-backup-$(date +%Y%m%d-%H%M%S).sql"
+}
+
+# 依檔名順序套用 migrations/ 底下還沒套用過的檔案，套用完立刻記錄，一個檔案
+# 失敗就整個中止（fail loud），不要吃錯誤繼續跑下一個——schema 沒套完整
+# 部署繼續下去只會讓後面的同步撞更奇怪的錯。
+run_pending_migrations() {
+  local d1_name="$1" profile="$2"
+  [ -d "$MIGRATIONS_DIR" ] || return 0
+  log_info "備份正式環境 D1（$d1_name）……"
+  d1_backup_remote "$d1_name" "$profile"
+  d1_ensure_migrations_table "$d1_name" "$profile"
+  local applied
+  applied="$(d1_applied_migrations "$d1_name" "$profile")"
+  local file name
+  for file in "$MIGRATIONS_DIR"/*.sql; do
+    [ -e "$file" ] || continue
+    name="$(basename "$file")"
+    if echo "$applied" | grep -qx "$name"; then
+      continue
+    fi
+    log_info "套用 D1 migration：$name"
+    npx wrangler d1 execute "$d1_name" --remote --profile "$profile" --file="$file"
+    npx wrangler d1 execute "$d1_name" --remote --profile "$profile" \
+      --command "INSERT INTO _migrations (name, applied_at) VALUES ('$name', $(($(date +%s) * 1000)))"
+    log_ok "已套用並記錄：$name"
+  done
+}
+
+# 新行程第一次直接灌整份 schema.sql（已經包含所有 migration 的最終結果），
+# 不需要也不該再重跑一次 migrations/ 裡的檔案——把它們直接標記成已套用，
+# 避免下次 deploy-trip.sh 誤判成「還沒套用」而重複 ALTER TABLE 出錯。
+mark_all_migrations_applied() {
+  local d1_name="$1" profile="$2"
+  [ -d "$MIGRATIONS_DIR" ] || return 0
+  d1_ensure_migrations_table "$d1_name" "$profile"
+  local file name
+  for file in "$MIGRATIONS_DIR"/*.sql; do
+    [ -e "$file" ] || continue
+    name="$(basename "$file")"
+    npx wrangler d1 execute "$d1_name" --remote --profile "$profile" \
+      --command "INSERT OR IGNORE INTO _migrations (name, applied_at) VALUES ('$name', $(($(date +%s) * 1000)))"
+  done
 }
 
 # 部署完成後確認落在 Production，不是就大聲失敗（CLAUDE.md 提過的「靜默變成
