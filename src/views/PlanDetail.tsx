@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { ArrowLeft, CaretRight, BellRinging } from '@phosphor-icons/react'
 import { useStore, useAllSpots } from '../lib/store'
 import { navUrl } from '../lib/nav'
@@ -6,6 +7,7 @@ import { sortPlans } from '../lib/time'
 import { phosphorIcon } from '../lib/icons'
 import { DAYINFO, KIND, NA, findSpot, findSpotForPlan } from '../data/spots'
 import Toast, { useToast } from '../components/Toast'
+import ConfirmDialog from '../components/ConfirmDialog'
 import SpotInfo from '../components/SpotInfo'
 import PlanPhotoCarousel, { type PlanPhotoSlide } from '../components/PlanPhotoCarousel'
 
@@ -31,6 +33,7 @@ export default function PlanDetail({
   const { toast, showToast } = useToast()
   const allSpots = useAllSpots()
   const spotsMeta = useStore((s) => s.entities.spotsMeta)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   if (!detail) return null
   // 只用 id 比對：行程可能被編輯改到別天，這時 detail.day 是開啟當下的舊值，
@@ -69,7 +72,6 @@ export default function PlanDetail({
   }
 
   const handleDelete = () => {
-    if (!window.confirm(`刪除「${plan.title}」這筆行程？`)) return
     const title = plan.title
     deletePlan(plan.id)
     closeDetail()
@@ -198,9 +200,21 @@ export default function PlanDetail({
         </div>
       )}
 
-      <button type="button" className="btn btn-secondary btn-block detail-delete-btn" onClick={handleDelete}>
+      <button
+        type="button"
+        className="btn btn-secondary btn-block detail-delete-btn"
+        onClick={() => setConfirmDeleteOpen(true)}
+      >
         刪除這個行程
       </button>
+
+      {confirmDeleteOpen && (
+        <ConfirmDialog
+          message={`刪除「${plan.title}」這筆行程？`}
+          onCancel={() => setConfirmDeleteOpen(false)}
+          onConfirm={handleDelete}
+        />
+      )}
 
       {toast && <Toast message={toast.message} />}
     </div>

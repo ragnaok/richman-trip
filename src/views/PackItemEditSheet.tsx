@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X, Trash } from '@phosphor-icons/react'
 import { useStore, useCatNames, useMemberNames } from '../lib/store'
 import Toast, { useToast } from '../components/Toast'
+import ConfirmDialog from '../components/ConfirmDialog'
 import type { Owner, PackItem } from '../lib/types'
 
 const SHARED_OWNER = '共同'
@@ -22,6 +23,7 @@ export default function PackItemEditSheet({ itemId, onClose }: { itemId: PackIte
   const [name, setName] = useState(item?.name ?? '')
   const [cat, setCat] = useState(item?.cat ?? '')
   const [owner, setOwner] = useState<Owner>(item?.owner ?? SHARED_OWNER)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   if (!item) return null
 
@@ -34,7 +36,6 @@ export default function PackItemEditSheet({ itemId, onClose }: { itemId: PackIte
   }
 
   const handleDelete = () => {
-    if (!window.confirm(`刪除「${item.name}」這個項目？`)) return
     deletePackItem(item.id)
     showToast('已刪除項目')
     onClose()
@@ -55,41 +56,41 @@ export default function PackItemEditSheet({ itemId, onClose }: { itemId: PackIte
           </button>
         </div>
 
-        <div className="field" style={{ marginTop: 12 }}>
+        <div className="field">
           <label>名稱</label>
           <input className="input" placeholder="項目名稱" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
 
-        <div className="edit-section-label" style={{ marginTop: 14 }}>
-          分類
-        </div>
-        <div className="edit-kind-chips" style={{ marginTop: 6 }}>
-          {catNames.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={`edit-kind-chip${cat === c ? ' is-selected' : ''}`}
-              onClick={() => setCat(c)}
-            >
-              {c}
-            </button>
-          ))}
+        <div className="edit-kind-block">
+          <div className="edit-section-label">分類</div>
+          <div className="edit-kind-chips">
+            {catNames.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={`edit-kind-chip${cat === c ? ' is-selected' : ''}`}
+                onClick={() => setCat(c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="edit-section-label" style={{ marginTop: 14 }}>
-          持有人
-        </div>
-        <div className="pack-owner-chips" style={{ marginTop: 6 }}>
-          {ownerOpts.map((o) => (
-            <button
-              key={o}
-              type="button"
-              className={`itin-day-chip${owner === o ? ' is-selected' : ''}`}
-              onClick={() => setOwner(o)}
-            >
-              {o}
-            </button>
-          ))}
+        <div className="edit-kind-block">
+          <div className="edit-section-label">持有人</div>
+          <div className="pack-owner-chips" style={{ marginTop: 6 }}>
+            {ownerOpts.map((o) => (
+              <button
+                key={o}
+                type="button"
+                className={`itin-day-chip${owner === o ? ' is-selected' : ''}`}
+                onClick={() => setOwner(o)}
+              >
+                {o}
+              </button>
+            ))}
+          </div>
         </div>
 
         <button
@@ -100,10 +101,22 @@ export default function PackItemEditSheet({ itemId, onClose }: { itemId: PackIte
         >
           儲存變更
         </button>
-        <button type="button" className="btn btn-secondary btn-block edit-delete-btn" onClick={handleDelete}>
+        <button
+          type="button"
+          className="btn btn-secondary btn-block edit-delete-btn"
+          onClick={() => setConfirmDeleteOpen(true)}
+        >
           <Trash size={16} weight="duotone" /> 刪除這個項目
         </button>
       </div>
+
+      {confirmDeleteOpen && (
+        <ConfirmDialog
+          message={`刪除「${item.name}」這個項目？`}
+          onCancel={() => setConfirmDeleteOpen(false)}
+          onConfirm={handleDelete}
+        />
+      )}
 
       {toast && <Toast message={toast.message} />}
     </div>
