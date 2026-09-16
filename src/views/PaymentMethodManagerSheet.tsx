@@ -83,7 +83,11 @@ export default function PaymentMethodManagerSheet({ onClose }: { onClose: () => 
             title="設為預設"
             onClick={() => toggleDefault('card')}
           >
-            <Star size={14} weight={defaultMethod === 'card' ? 'fill' : 'duotone'} />
+            <Star
+              size={14}
+              weight={defaultMethod === 'card' ? 'fill' : 'duotone'}
+              color={defaultMethod === 'card' ? 'var(--color-process-yellow)' : 'currentColor'}
+            />
             預設
           </button>
           <input className="input" value={cardLabelDraft} onChange={(e) => setCardLabelDraft(e.target.value)} />
@@ -99,7 +103,11 @@ export default function PaymentMethodManagerSheet({ onClose }: { onClose: () => 
               title="設為預設，顯示在新增支出畫面「信用卡」的位置"
               onClick={() => toggleDefault(name)}
             >
-              <Star size={14} weight={defaultMethod === name ? 'fill' : 'duotone'} />
+              <Star
+                size={14}
+                weight={defaultMethod === name ? 'fill' : 'duotone'}
+                color={defaultMethod === name ? 'var(--color-process-yellow)' : 'currentColor'}
+              />
               預設
             </button>
             <input
