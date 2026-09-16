@@ -42,7 +42,7 @@ type DaigouFilter = '不含代購' | '含代購' | '只看代購'
  * 分類篩選標籤是分開的兩件事：篩選 sheet 的條件會整頁套用（總額／已付／圖表／明細都跟著
  * 篩），分類標籤跟搜尋只影響明細列表本身。
  *
- * 結算依 splitAmong 計算（見 lib/money.ts settle()），代購一律不列入；只有一位身份時
+ * 結算依 splitAmong 計算（見 lib/money.ts settle()），代購也算進去；只有一位身份時
  * 完全不顯示已付卡／結算按鈕——這兩者只有多人才有意義。
  */
 export default function MoneyTab() {

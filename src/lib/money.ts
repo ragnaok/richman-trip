@@ -1,8 +1,9 @@
 // 記帳計算邏輯：
 // - twd(e) = e.cur==='TWD' ? e.amt : e.amt*rate；總額、每人已付、分類統計都以台幣為基準
 // - 匯率非法時 fallback 0.216
-// - 結算（settle）依 splitAmong 算出「誰該轉給誰多少」，代購一律排除；splitAmong 沒有值
-//   （包含所有既有支出）視同「目前全體成員均分」——這是設計上的預設，不是遺漏
+// - 結算（settle）依 splitAmong 算出「誰該轉給誰多少」，代購也算進去（只是不算進「不含
+//   代購」的花費統計）；splitAmong 沒有值（包含所有既有支出）視同「目前全體成員均分」——
+//   這是設計上的預設，不是遺漏
 import type { Expense, PayMethod } from './types'
 
 export const DEFAULT_RATE = 0.216
@@ -119,10 +120,11 @@ export interface SettleLine {
   amount: number
 }
 
-/** 結算：每人淨額 = Σ(該筆付了多少 − 該筆該分攤多少)，代購一律不列入。淨額為負（欠錢）
- * 跟為正（該收錢）的人依金額大小貪婪配對，湊出最少交易數的轉帳清單。 */
+/** 結算：每人淨額 = Σ(該筆付了多少 − 該筆該分攤多少)，代購一樣列入計算——代購只是不算進
+ * 「不含代購」的花費統計，錢還是有人先墊、還是要算進結算。淨額為負（欠錢）跟為正（該收錢）
+ * 的人依金額大小貪婪配對，湊出最少交易數的轉帳清單。 */
 export function settle(expenses: Expense[], members: string[], rate: number): SettleLine[] {
-  const splitBase = expenses.filter((e) => e.deleted !== 1 && !e.daigou)
+  const splitBase = expenses.filter((e) => e.deleted !== 1)
   const balances = members.map((name) => ({
     name,
     net: splitBase.reduce((sum, e) => {

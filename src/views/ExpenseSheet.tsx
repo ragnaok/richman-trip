@@ -46,6 +46,7 @@ export default function ExpenseSheet() {
   const currencySymbol = useStore((s) => s.entities.settings.currencySymbol ?? '¥')
   const cardLabel = useStore((s) => s.entities.settings.cardLabel ?? '信用卡')
   const defaultMethod = useStore((s) => s.entities.settings.defaultMethod ?? 'card')
+  const defaultMoneyCat = useStore((s) => s.entities.settings.defaultMoneyCat)
   const expenses = useStore((s) => s.entities.expenses)
   const editingId = useStore((s) => s.ui.editingExpenseId)
   const closeAddExpense = useStore((s) => s.closeAddExpense)
@@ -67,7 +68,9 @@ export default function ExpenseSheet() {
   const [spentOn, setSpentOn] = useState(editing?.spent_on ?? todayISO())
   const [cur, setCur] = useState<Currency>(editing?.cur ?? 'JPY')
   const [amt, setAmt] = useState(editing ? String(editing.amt) : '')
-  const [cat, setCat] = useState(editing?.cat ?? moneyCats[0])
+  const [cat, setCat] = useState(
+    editing?.cat ?? (defaultMoneyCat && moneyCats.includes(defaultMoneyCat) ? defaultMoneyCat : moneyCats[0]),
+  )
   const [payer, setPayer] = useState<Payer>(editing?.payer ?? currentRole ?? memberNames[0] ?? '')
   const [method, setMethod] = useState<PayMethod>(editing ? payMethod(editing) : 'cash')
   const [daigou, setDaigou] = useState(editing?.daigou ?? false)
@@ -224,7 +227,7 @@ export default function ExpenseSheet() {
           <button
             type="button"
             className={`daigou-toggle-btn${daigou ? ' is-active' : ''}`}
-            title="代購金額不計入「不含代購」的統計，也不列入結算，明細會標記「代購」"
+            title="代購金額不計入「不含代購」的統計，但一樣列入結算，明細會標記「代購」"
             onClick={() => setDaigou(!daigou)}
           >
             {daigou ? <CheckSquare size={14} weight="duotone" /> : <Square size={14} weight="duotone" />}

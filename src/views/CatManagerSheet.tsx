@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Trash } from '@phosphor-icons/react'
+import { X, Trash, Star } from '@phosphor-icons/react'
 import { useStore, useCatNames } from '../lib/store'
 import Toast, { useToast } from '../components/Toast'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -9,6 +9,11 @@ import type { Cat } from '../lib/types'
  * 分類管理 bottom sheet（行李／記帳分頁共用）。
  * 改名暫存在本地 input，按「儲存分類名稱」才套用（renameCat 會連同既有項目一起改）。
  * 刪除點垃圾桶立刻生效，deleteCat 會連同分類裡的項目一起刪除。
+ *
+ * 「預設分類」只有記帳（kind==='money'）才有：settings.defaultMoneyCat 存哪個分類要在
+ * 新增支出時預選，同時間只有一個，UI 跟 toggle 邏輯照抄 PaymentMethodManagerSheet 的
+ * defaultMethod（見該檔開頭註解）。改名/刪除目前是否為預設的分類時，跟 defaultMethod
+ * 一樣不特別同步處理——ExpenseSheet 會檢查 defaultMoneyCat 是否還在目前分類清單裡再套用。
  */
 export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; onClose: () => void }) {
   const catNames = useCatNames(kind)
@@ -16,7 +21,11 @@ export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; 
   const expenses = useStore((s) => s.entities.expenses)
   const renameCat = useStore((s) => s.renameCat)
   const deleteCat = useStore((s) => s.deleteCat)
+  const defaultMoneyCat = useStore((s) => s.entities.settings.defaultMoneyCat)
+  const setSetting = useStore((s) => s.setSetting)
   const { toast, showToast } = useToast()
+
+  const toggleDefault = (name: string) => setSetting('defaultMoneyCat', defaultMoneyCat === name ? '' : name)
 
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -55,10 +64,23 @@ export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; 
             <X size={16} weight="duotone" />
           </button>
         </div>
-        <p className="edit-hint">改名會一併套用到既有項目；刪除分類會連同其中的項目一起刪除。</p>
+        <p className="edit-hint">
+          改名會一併套用到既有項目；刪除分類會連同其中的項目一起刪除。
+          {kind === 'money' && '設為預設的分類會顯示在新增支出時預選的分類，再點一次可取消。'}
+        </p>
 
         {catNames.map((name) => (
           <div key={name} className="edit-list-row">
+            {kind === 'money' && (
+              <button
+                type="button"
+                className={`method-mgr-default-btn${defaultMoneyCat === name ? ' is-default' : ''}`}
+                title="設為預設分類"
+                onClick={() => toggleDefault(name)}
+              >
+                <Star size={14} weight={defaultMoneyCat === name ? 'fill' : 'duotone'} />
+              </button>
+            )}
             <input
               className="input"
               value={drafts[name] ?? name}
