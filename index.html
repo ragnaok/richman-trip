@@ -12,14 +12,11 @@
     <!-- iOS Safari 的 PWA meta：manifest 它也會讀，但少了這幾個 apple-* tag 就不會有
          standalone 啟動與正確的狀態列外觀／主畫面圖示。 -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <!-- 實驗中：改成 black-translucent 測試能不能避開 iOS 26+ Liquid Glass 在
-         status-bar-style="default" 下仍會蓋住主視覺照片的系統毛玻璃（見
-         src/styles/app.css .safe-area-spacer 的註解）。原本選 default 是因為
-         black-translucent 讓系統狀態列疊在內容上方並預期深色底，跟這裡淺色 chrome
-         的分頁（景點/行李/記帳，頂部背景是淺色的）會衝突，狀態列文字/圖示可能變得
-         難辨識——這是拿「其他分頁狀態列可讀性」換「行程頁毛玻璃問題」的取捨，
-         測試結果不理想（或其他分頁狀態列真的看不清）就改回 default。 -->
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- 狀態列樣式選 default：black-translucent 會讓系統狀態列疊在內容上方並預期
+         深色底，跟這裡的淺色 chrome 衝突。
+         （已實測過 black-translucent：無法避開 iOS 26+ Liquid Glass 蓋在主視覺
+         照片頂部的系統毛玻璃，副作用還讓其他分頁 layout 跟著跑掉，改回 default。） -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <!-- functions/manifest.webmanifest.ts 在請求當下查 D1 動態產生 name/short_name/
