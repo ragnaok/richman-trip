@@ -1248,6 +1248,12 @@ body {
   color: color-mix(in srgb, var(--color-text) 50%, transparent);
 }
 
+/* 分類清單常常一長串（十幾個分類），共用的 .edit-list-row margin-bottom 8px
+   疊起來太鬆，這裡收窄一點。 */
+.cat-mgr-row {
+  margin-bottom: 4px;
+}
+
 /* 美食推薦一筆有兩行（店名+備註+刪除鈕、地址），group 統一管理跟下一筆的間距，
    內層 .edit-list-row 自己的 margin-bottom 用來分開這兩行。 */
 .edit-list-row-group {
