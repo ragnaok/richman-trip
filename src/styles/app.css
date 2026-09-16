@@ -2480,12 +2480,6 @@ body {
   color: var(--color-accent);
 }
 
-.method-mgr-cash-label {
-  opacity: 0.55;
-  font-size: 13.5px;
-  flex: 1;
-}
-
 .method-mgr-default-btn {
   flex: none;
   display: flex;

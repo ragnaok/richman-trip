@@ -71,14 +71,10 @@ export default function PaymentMethodManagerSheet({ onClose }: { onClose: () => 
           </button>
         </div>
         <p className="edit-hint">
-          現金為預設方式，不可更名或刪除。信用卡可改名，未設定其他預設付款方式時會一直是預設。
-          設為預設的方式會顯示在新增支出畫面「現金」旁邊的槽位，再點一次「預設」可取消，恢復顯示信用卡。
+          現金為預設方式，不可更名或刪除。信用卡可改名，不可刪除。
+          設為預設的方式會顯示在新增支出畫面「現金」旁邊的位置。
           改名會套用到既有支出；刪除自訂方式後相關支出會改記為現金。
         </p>
-
-        <div className="edit-list-row">
-          <span className="method-mgr-cash-label">現金</span>
-        </div>
 
         <div className="edit-list-row">
           <button
@@ -87,7 +83,11 @@ export default function PaymentMethodManagerSheet({ onClose }: { onClose: () => 
             title="設為預設"
             onClick={() => toggleDefault('card')}
           >
-            <Star size={14} weight={defaultMethod === 'card' ? 'fill' : 'duotone'} />
+            <Star
+              size={14}
+              weight={defaultMethod === 'card' ? 'fill' : 'duotone'}
+              color={defaultMethod === 'card' ? 'var(--color-process-yellow)' : 'currentColor'}
+            />
             預設
           </button>
           <input className="input" value={cardLabelDraft} onChange={(e) => setCardLabelDraft(e.target.value)} />
@@ -103,7 +103,11 @@ export default function PaymentMethodManagerSheet({ onClose }: { onClose: () => 
               title="設為預設，顯示在新增支出畫面「信用卡」的位置"
               onClick={() => toggleDefault(name)}
             >
-              <Star size={14} weight={defaultMethod === name ? 'fill' : 'duotone'} />
+              <Star
+                size={14}
+                weight={defaultMethod === name ? 'fill' : 'duotone'}
+                color={defaultMethod === name ? 'var(--color-process-yellow)' : 'currentColor'}
+              />
               預設
             </button>
             <input
