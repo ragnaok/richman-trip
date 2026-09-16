@@ -2854,7 +2854,33 @@ body {
 }
 
 .settings-rate-field {
-  width: 140px;
+  width: 100%;
+}
+
+.settings-rate-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.settings-rate-row .field {
+  flex: 1;
+}
+
+.settings-rate-sync-btn {
+  flex: none;
+  padding: 0 16px;
+  height: 38px;
+}
+
+.settings-rate-sync-spin {
+  animation: spin 0.8s linear infinite;
+}
+
+.settings-rate-last-sync {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
 }
 
 .settings-visual-row {

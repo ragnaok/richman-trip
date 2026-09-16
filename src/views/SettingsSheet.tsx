@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react'
-import { X, UserSwitch, SignOut, Bed, Plus, PencilSimple, Trash, BellRinging, BellSlash } from '@phosphor-icons/react'
+import {
+  X,
+  UserSwitch,
+  SignOut,
+  Bed,
+  Plus,
+  PencilSimple,
+  Trash,
+  BellRinging,
+  BellSlash,
+  ArrowsClockwise,
+  CircleNotch,
+} from '@phosphor-icons/react'
 import { useStore, useHotels } from '../lib/store'
 import { dayRange } from '../lib/time'
 import { switchRole, logout } from '../lib/auth'
@@ -11,9 +23,10 @@ import {
   disablePushReminders,
   sendTestPush,
 } from '../lib/push'
+import Toast, { useToast } from '../components/Toast'
 import PhotoUpload from '../components/PhotoUpload'
 import { fileToSquareIconDataUrl } from '../lib/imageUpload'
-import { apiFetchJson } from '../lib/api'
+import { apiFetchJson, ApiError } from '../lib/api'
 import type { StoredHotel } from '../lib/types'
 
 interface HotelDraft {
@@ -69,6 +82,10 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
   const [currencyNameDraft, setCurrencyNameDraft] = useState(currencyName)
   const [currencyCodeDraft, setCurrencyCodeDraft] = useState(currencyCode)
   const [currencySymbolDraft, setCurrencySymbolDraft] = useState(currencySymbol)
+  const [rateFetchBusy, setRateFetchBusy] = useState(false)
+  const [rateFetchError, setRateFetchError] = useState<string | null>(null)
+  const [lastRateSync, setLastRateSync] = useState<string | null>(null)
+  const { toast, showToast } = useToast()
   const destDirty =
     destTitleDraft !== destTitle || destSubtitleDraft !== destSubtitle || regionHintDraft !== geminiRegionHint
   const rateDirty =
@@ -87,6 +104,26 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
     if (currencyNameDraft !== currencyName) setSetting('currencyName', currencyNameDraft)
     if (currencyCodeDraft !== currencyCode) setSetting('currencyCode', currencyCodeDraft)
     if (currencySymbolDraft !== currencySymbol) setSetting('currencySymbol', currencySymbolDraft)
+  }
+
+  // 抓到的匯率只灌回草稿，不直接寫 store：維持「改完按儲存才真的生效」的既有規則，
+  // 使用者還是要按一次「儲存」才會連動到記帳頁換算。
+  async function fetchRate() {
+    setRateFetchBusy(true)
+    setRateFetchError(null)
+    try {
+      const res = await apiFetchJson<{ rate: number }>(
+        `/api/exchange-rate?from=${encodeURIComponent(currencyCodeDraft)}`,
+      )
+      setRateDraft(String(res.rate))
+      const now = new Date()
+      setLastRateSync(`${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`)
+      showToast(`已同步匯率 · ${res.rate}`)
+    } catch (err) {
+      setRateFetchError(err instanceof ApiError ? err.message : '匯率服務暫時無法連線，請稍後再試')
+    } finally {
+      setRateFetchBusy(false)
+    }
   }
 
   const [pendingDates, setPendingDates] = useState<{ start: string; end: string } | null>(null)
@@ -351,10 +388,27 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
             />
           </div>
         </div>
-        <div className="field settings-rate-field" style={{ marginTop: 10 }}>
-          <label>匯率 {currencyCodeDraft}→TWD</label>
-          <input className="input" value={rateDraft} onChange={(e) => setRateDraft(e.target.value)} />
+        <div className="settings-rate-row" style={{ marginTop: 10 }}>
+          <div className="field">
+            <label>匯率 {currencyCodeDraft}→TWD</label>
+            <input className="input" value={rateDraft} onChange={(e) => setRateDraft(e.target.value)} />
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary settings-rate-sync-btn"
+            disabled={rateFetchBusy}
+            onClick={fetchRate}
+          >
+            {rateFetchBusy ? (
+              <CircleNotch size={15} weight="duotone" className="settings-rate-sync-spin" />
+            ) : (
+              <ArrowsClockwise size={15} weight="duotone" />
+            )}
+            {rateFetchBusy ? '同步中…' : '同步匯率'}
+          </button>
         </div>
+        {rateFetchError && <p className="settings-push-error">{rateFetchError}</p>}
+        {lastRateSync && !rateFetchError && <p className="settings-rate-last-sync">上次同步 {lastRateSync}</p>}
         <button
           type="button"
           className="btn btn-primary btn-block settings-push-btn"
@@ -590,6 +644,7 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
           </button>
         )}
       </div>
+      {toast && <Toast message={toast.message} />}
     </div>
   )
 }
