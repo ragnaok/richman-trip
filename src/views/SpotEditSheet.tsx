@@ -5,6 +5,7 @@ import { genId } from '../lib/id'
 import { apiFetchJson, ApiError } from '../lib/api'
 import { SPOTS } from '../data/spots'
 import Toast, { useToast } from '../components/Toast'
+import ConfirmDialog from '../components/ConfirmDialog'
 import type { CustomSpot, Spot, WalkStep, FoodRec } from '../lib/types'
 
 /** functions/api/spot-import.ts 回傳的形狀，等同 Spot 扣掉 id（id 由前端 genId()）。
@@ -58,6 +59,7 @@ export default function SpotEditSheet({
   const [food, setFood] = useState<FoodRec[]>(existingSpot?.food ?? [])
   const [importing, setImporting] = useState(false)
   const [geminiPhoto, setGeminiPhoto] = useState<string | undefined>(undefined)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   const handleGeminiImport = async () => {
     const trimmedName = name.trim()
@@ -121,7 +123,6 @@ export default function SpotEditSheet({
 
   const handleDelete = () => {
     if (!existingSpot || isSeedSpot) return
-    if (!window.confirm(`刪除「${existingSpot.name}」這個景點？`)) return
     deleteSpot(existingSpot.id)
     showToast('已刪除景點')
     if (onDeleted) onDeleted()
@@ -287,11 +288,23 @@ export default function SpotEditSheet({
           {existingSpot ? '儲存變更' : '新增景點'}
         </button>
         {existingSpot && !isSeedSpot && (
-          <button type="button" className="btn btn-secondary btn-block edit-delete-btn" onClick={handleDelete}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-block edit-delete-btn"
+            onClick={() => setConfirmDeleteOpen(true)}
+          >
             <Trash size={16} weight="duotone" /> 刪除這個景點
           </button>
         )}
       </div>
+
+      {confirmDeleteOpen && existingSpot && (
+        <ConfirmDialog
+          message={`刪除「${existingSpot.name}」這個景點？`}
+          onCancel={() => setConfirmDeleteOpen(false)}
+          onConfirm={handleDelete}
+        />
+      )}
 
       {toast && <Toast message={toast.message} />}
     </div>

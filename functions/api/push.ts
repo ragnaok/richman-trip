@@ -71,11 +71,17 @@ const TABLE_SPECS: Record<string, TableSpec> = {
     bind: (r, now) => [str(r.id), str(r.cat), str(r.name), str(r.owner), toInt01(r.done), now, toInt01(r.deleted)],
   },
   expenses: {
-    columns: ['id', 'title', 'cat', 'cur', 'amt', 'payer', 'method', 'daigou', 'spent_on', 'updated_at', 'deleted'],
+    columns: [
+      'id', 'title', 'cat', 'cur', 'amt', 'payer', 'method', 'daigou', 'spent_on',
+      'payers', 'split_among', 'split_amounts', 'updated_at', 'deleted',
+    ],
     conflictKeys: ['id'],
     hasDeleted: true,
     bind: (r, now) => [
       str(r.id), str(r.title), str(r.cat), str(r.cur), num(r.amt), str(r.payer), str(r.method), toInt01(r.daigou), str(r.spent_on),
+      r.payers != null ? JSON.stringify(r.payers) : null,
+      r.splitAmong != null ? JSON.stringify(r.splitAmong) : null,
+      r.splitAmounts != null ? JSON.stringify(r.splitAmounts) : null,
       now, toInt01(r.deleted),
     ],
   },

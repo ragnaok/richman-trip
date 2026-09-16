@@ -35,8 +35,11 @@ CREATE TABLE expenses (
   id TEXT PRIMARY KEY, title TEXT NOT NULL, cat TEXT NOT NULL,
   cur TEXT NOT NULL CHECK (cur IN ('JPY','TWD')), amt REAL NOT NULL,
   payer TEXT NOT NULL, method TEXT,                         -- 'cash'/'card'/自訂方式名稱，NULL 視同現金
-  daigou INTEGER DEFAULT 0,                                 -- 代購：不計入「不含代購」統計
+  daigou INTEGER DEFAULT 0,                                 -- 代購：不計入「不含代購」統計，也不列入結算
   spent_on TEXT,                                            -- 日期 'YYYY-MM-DD'，不限旅遊區間
+  payers TEXT,                                              -- 多付款人 {name:amt} 的 JSON；NULL 視同 payer 一人付 amt 全額
+  split_among TEXT,                                         -- 分攤對象 name 陣列的 JSON；NULL 視同目前全體成員
+  split_amounts TEXT,                                       -- 分攤金額覆寫 {name:amt} 的 JSON；NULL 視同平分
   updated_at INTEGER NOT NULL, deleted INTEGER DEFAULT 0);
 CREATE TABLE payment_methods (                              -- 自訂付款方式（現金/信用卡是內建值，不進這張表）
   name TEXT PRIMARY KEY,

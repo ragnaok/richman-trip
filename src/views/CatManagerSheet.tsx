@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X, Trash } from '@phosphor-icons/react'
 import { useStore, useCatNames } from '../lib/store'
 import Toast, { useToast } from '../components/Toast'
+import ConfirmDialog from '../components/ConfirmDialog'
 import type { Cat } from '../lib/types'
 
 /**
@@ -18,6 +19,7 @@ export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; 
   const { toast, showToast } = useToast()
 
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
   const countFor = (name: string): number =>
     kind === 'pack'
@@ -34,9 +36,9 @@ export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; 
   }
 
   const handleDelete = (name: string) => {
-    if (!window.confirm(`刪除分類「${name}」？其中的項目也會一併刪除。`)) return
     deleteCat(kind, name)
     showToast(`已刪除分類「${name}」與其項目`)
+    setDeleteTarget(null)
   }
 
   return (
@@ -67,7 +69,7 @@ export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; 
               type="button"
               className="btn btn-ghost edit-list-row-remove"
               aria-label={`刪除分類 ${name}`}
-              onClick={() => handleDelete(name)}
+              onClick={() => setDeleteTarget(name)}
             >
               <Trash size={17} weight="duotone" />
             </button>
@@ -78,6 +80,14 @@ export default function CatManagerSheet({ kind, onClose }: { kind: Cat['kind']; 
           儲存分類名稱
         </button>
       </div>
+
+      {deleteTarget && (
+        <ConfirmDialog
+          message={`刪除分類「${deleteTarget}」？其中的項目也會一併刪除。`}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => handleDelete(deleteTarget)}
+        />
+      )}
 
       {toast && <Toast message={toast.message} />}
     </div>

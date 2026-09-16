@@ -45,6 +45,9 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
   const tripStart = useStore((s) => s.entities.settings.tripStart ?? '')
   const tripEnd = useStore((s) => s.entities.settings.tripEnd ?? '')
   const rate = useStore((s) => s.entities.settings.rate ?? '0.216')
+  const currencyName = useStore((s) => s.entities.settings.currencyName ?? '日幣')
+  const currencyCode = useStore((s) => s.entities.settings.currencyCode ?? 'JPY')
+  const currencySymbol = useStore((s) => s.entities.settings.currencySymbol ?? '¥')
   const plans = useStore((s) => s.entities.plans)
   const setSetting = useStore((s) => s.setSetting)
   const setRate = useStore((s) => s.setRate)
@@ -63,9 +66,16 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
   const [destSubtitleDraft, setDestSubtitleDraft] = useState(destSubtitle)
   const [regionHintDraft, setRegionHintDraft] = useState(geminiRegionHint)
   const [rateDraft, setRateDraft] = useState(rate)
+  const [currencyNameDraft, setCurrencyNameDraft] = useState(currencyName)
+  const [currencyCodeDraft, setCurrencyCodeDraft] = useState(currencyCode)
+  const [currencySymbolDraft, setCurrencySymbolDraft] = useState(currencySymbol)
   const destDirty =
     destTitleDraft !== destTitle || destSubtitleDraft !== destSubtitle || regionHintDraft !== geminiRegionHint
-  const rateDirty = rateDraft !== rate
+  const rateDirty =
+    rateDraft !== rate ||
+    currencyNameDraft !== currencyName ||
+    currencyCodeDraft !== currencyCode ||
+    currencySymbolDraft !== currencySymbol
 
   // 目的地跟記帳都是單純防呆用的草稿（不像旅遊日期改了可能要刪行程、需要獨立的
   // 二次確認），共用一顆「儲存」。
@@ -73,7 +83,10 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
     if (destTitleDraft !== destTitle) setSetting('destTitle', destTitleDraft)
     if (destSubtitleDraft !== destSubtitle) setSetting('destSubtitle', destSubtitleDraft)
     if (regionHintDraft !== geminiRegionHint) setSetting('geminiRegionHint', regionHintDraft)
-    if (rateDirty) setRate(rateDraft)
+    if (rateDraft !== rate) setRate(rateDraft)
+    if (currencyNameDraft !== currencyName) setSetting('currencyName', currencyNameDraft)
+    if (currencyCodeDraft !== currencyCode) setSetting('currencyCode', currencyCodeDraft)
+    if (currencySymbolDraft !== currencySymbol) setSetting('currencySymbol', currencySymbolDraft)
   }
 
   const [pendingDates, setPendingDates] = useState<{ start: string; end: string } | null>(null)
@@ -320,8 +333,26 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
         <div className="edit-section-label" style={{ marginTop: 14 }}>
           記帳
         </div>
+        <div className="settings-currency-row" style={{ marginTop: 10 }}>
+          <div className="field">
+            <label>幣別名稱</label>
+            <input className="input" value={currencyNameDraft} onChange={(e) => setCurrencyNameDraft(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>幣別代碼</label>
+            <input className="input" value={currencyCodeDraft} onChange={(e) => setCurrencyCodeDraft(e.target.value)} />
+          </div>
+          <div className="field settings-currency-symbol-field">
+            <label>符號</label>
+            <input
+              className="input"
+              value={currencySymbolDraft}
+              onChange={(e) => setCurrencySymbolDraft(e.target.value)}
+            />
+          </div>
+        </div>
         <div className="field settings-rate-field" style={{ marginTop: 10 }}>
-          <label>匯率 JPY→TWD</label>
+          <label>匯率 {currencyCodeDraft}→TWD</label>
           <input className="input" value={rateDraft} onChange={(e) => setRateDraft(e.target.value)} />
         </div>
         <button

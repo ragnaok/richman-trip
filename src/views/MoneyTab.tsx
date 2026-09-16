@@ -1,9 +1,29 @@
 import { useMemo, useState } from 'react'
-import { SlidersHorizontal, PencilSimple, CheckSquare, Square, Funnel, CaretDown, CaretUp } from '@phosphor-icons/react'
+import {
+  SlidersHorizontal,
+  PencilSimple,
+  Funnel,
+  CaretDown,
+  CaretUp,
+  Scales,
+  X,
+  MagnifyingGlass,
+} from '@phosphor-icons/react'
 import { useStore, useMemberNames } from '../lib/store'
 import { CAT_ICON } from '../data/spots'
 import { phosphorIcon } from '../lib/icons'
-import { rateNum, twd, formatTWD, formatJPY, payMethod, methodLabel, methodOrder, methodColor } from '../lib/money'
+import {
+  rateNum,
+  twd,
+  formatTWD,
+  formatJPY,
+  payMethod,
+  payersOf,
+  methodLabel,
+  methodOrder,
+  methodColor,
+  settle,
+} from '../lib/money'
 import { formatExpenseDate } from '../lib/time'
 import { usePullToRefresh } from '../lib/usePullToRefresh'
 import { pull as syncPull, push as syncPush } from '../lib/sync'
@@ -11,31 +31,42 @@ import PullToRefresh from '../components/PullToRefresh'
 import Toast, { useToast } from '../components/Toast'
 
 const ALL_FILTER = '全部'
+type DaigouFilter = '不含代購' | '含代購' | '只看代購'
 
 /**
- * 記帳分頁。金額一律走 lib/money.ts 的 twd() 以台幣為基準，不做「誰欠誰」結算。
- * 區塊順序：總額 → 各人已付卡 → 新增支出按鈕 → 每日花費 → 分類統計 → 明細；新增支出
- * 刻意放在上面，不用每次捲到頁尾。
+ * 記帳分頁。金額一律走 lib/money.ts 的 twd() 以台幣為基準。
+ * 區塊順序：總覽卡（總額＋雙幣對照＋各人已付，單一身份時不顯示已付）→ 新增支出按鈕 →
+ * 洞察區（每日花費／分類統計合併成一個可切換的圖表）→ 明細（搜尋＋可清除的分類篩選標籤）。
  *
- * expDate（點每日花費某一天）、expMethod（點付款方式圖例）都跟 showDaigou 一樣
- * 會影響 effItems，進而讓總額／雙幣對照／已付卡／分類統計整頁一起篩選（點一下套用，
- * 再點同一個取消）；expFilter（明細分類頁籤）只影響明細列表。這幾個篩選彼此是
- * AND 條件，可以疊加（例如篩某一天＋某種付款方式）。
+ * 篩選（付款方式／日期／身份／代購）統一收在右上角「篩選」bottom sheet，跟明細搜尋框、
+ * 分類篩選標籤是分開的兩件事：篩選 sheet 的條件會整頁套用（總額／已付／圖表／明細都跟著
+ * 篩），分類標籤跟搜尋只影響明細列表本身。
+ *
+ * 結算依 splitAmong 計算（見 lib/money.ts settle()），代購一律不列入；只有一位身份時
+ * 完全不顯示已付卡／結算按鈕——這兩者只有多人才有意義。
  */
 export default function MoneyTab() {
   const expenses = useStore((s) => s.entities.expenses)
   const rateStr = useStore((s) => s.entities.settings.rate ?? '0.216')
+  const currencyName = useStore((s) => s.entities.settings.currencyName ?? '日幣')
+  const currencySymbol = useStore((s) => s.entities.settings.currencySymbol ?? '¥')
+  const cardLabel = useStore((s) => s.entities.settings.cardLabel ?? '信用卡')
   const memberNames = useMemberNames()
   const openAddExpense = useStore((s) => s.openAddExpense)
   const openEditExpense = useStore((s) => s.openEditExpense)
   const openCatMgr = useStore((s) => s.openCatMgr)
+  const singleMember = memberNames.length <= 1
 
-  const [expFilter, setExpFilter] = useState<string>(ALL_FILTER)
+  const [expFilter, setExpFilter] = useState<string>(ALL_FILTER) // 明細分類篩選標籤
+  const [expSearch, setExpSearch] = useState('')
   const [expDate, setExpDate] = useState<string>(ALL_FILTER)
   const [expMethod, setExpMethod] = useState<string>(ALL_FILTER)
-  const [showDaigou, setShowDaigou] = useState(false)
-  const [dailyHintOpen, setDailyHintOpen] = useState(false)
+  const [expPayer, setExpPayer] = useState<string>(ALL_FILTER)
+  const [daigouFilter, setDaigouFilter] = useState<DaigouFilter>('不含代購')
+  const [chartMode, setChartMode] = useState<'day' | 'cat'>('day')
   const [dailyExpanded, setDailyExpanded] = useState(false)
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [settleOpen, setSettleOpen] = useState(false)
 
   const { toast, showToast } = useToast()
   const { containerRef, pull, status } = usePullToRefresh({
@@ -49,14 +80,21 @@ export default function MoneyTab() {
     [expenses],
   )
 
-  // 含代購開關 + 選中的付款方式：兩者一起決定 dayBase，effItems 再疊上選中的那天。
-  // 每日花費列表本身用 dayBase（不吃 expDate，只吃代購開關／付款方式篩選）——要讓
-  // 使用者一直看得到所有日期可以點，選中某一天不該讓自己從列表消失；付款方式篩選則
-  // 要讓每日花費的金額跟著篩選結果變（篩「信用卡」時看到的是每天刷卡花了多少）。
+  // 篩選鏈：代購 → 付款方式 → 身份（決定 dayBase，每日花費維持全部日期可點）→ 日期
+  // （決定 effItems，總額／已付卡／分類統計都吃這層）。
+  const daigouFiltered = useMemo(
+    () =>
+      daigouFilter === '含代購'
+        ? items
+        : daigouFilter === '只看代購'
+          ? items.filter((e) => e.daigou)
+          : items.filter((e) => !e.daigou),
+    [items, daigouFilter],
+  )
   const dayBase = useMemo(() => {
-    const base = showDaigou ? items : items.filter((e) => !e.daigou)
-    return expMethod === ALL_FILTER ? base : base.filter((e) => payMethod(e) === expMethod)
-  }, [items, showDaigou, expMethod])
+    const byMethod = expMethod === ALL_FILTER ? daigouFiltered : daigouFiltered.filter((e) => payMethod(e) === expMethod)
+    return expPayer === ALL_FILTER ? byMethod : byMethod.filter((e) => e.payer === expPayer)
+  }, [daigouFiltered, expMethod, expPayer])
   const effItems = useMemo(
     () => (expDate === ALL_FILTER ? dayBase : dayBase.filter((e) => e.spent_on === expDate)),
     [dayBase, expDate],
@@ -69,25 +107,18 @@ export default function MoneyTab() {
   const twdDirectTotal = effItems.filter((e) => e.cur === 'TWD').reduce((sum, e) => sum + e.amt, 0)
   const grandTotal = effItems.reduce((sum, e) => sum + twd(e, rate), 0)
 
-  const byPayer = (payer: string) => effItems.filter((e) => e.payer === payer)
-  const payerTotal = (payer: string) => byPayer(payer).reduce((sum, e) => sum + twd(e, rate), 0)
-  const payerJpySum = (payer: string) =>
-    byPayer(payer)
-      .filter((e) => e.cur === 'JPY')
-      .reduce((sum, e) => sum + e.amt, 0)
-  const payerJpyCashSum = (payer: string) =>
-    byPayer(payer)
+  const paidTwdOf = (person: string) => effItems.reduce((sum, e) => sum + (twd({ cur: e.cur, amt: payersOf(e)[person] ?? 0 }, rate)), 0)
+  const paidJpyOf = (person: string) =>
+    effItems.filter((e) => e.cur === 'JPY').reduce((sum, e) => sum + (payersOf(e)[person] ?? 0), 0)
+  const paidJpyCashOf = (person: string) =>
+    effItems
       .filter((e) => e.cur === 'JPY' && payMethod(e) === 'cash')
-      .reduce((sum, e) => sum + e.amt, 0)
+      .reduce((sum, e) => sum + (payersOf(e)[person] ?? 0), 0)
 
   // 圖表（每日花費／分類統計）共用的付款方式順序：現金、信用卡固定在前，其餘自訂
-  // 方式接在後面，順序基於全部未刪除支出（不受代購/日期篩選影響），篩選時顏色
-  // 才不會跳動；也讓圖例一定會列出使用者新增過的自訂付款方式。
+  // 方式接在後面，順序基於全部未刪除支出（不受篩選影響），篩選時顏色才不會跳動。
   const methods = useMemo(() => methodOrder(items.map(payMethod)), [items])
 
-  // 分類統計：每個分類的長條依付款方式拆成多段，顏色跟每日花費、圖例共用同一份
-  // methodColor 色票（見 lib/money.ts），不再用分類色——付款方式一多，色票的顏色
-  // 辨識度比「同色相深淺」好很多，圖例的顏色也才會跟長條對得上。
   const catTotals = useMemo(() => {
     const totals = new Map<string, { sum: number; byMethod: Record<string, number> }>()
     for (const e of effItems) {
@@ -103,10 +134,6 @@ export default function MoneyTab() {
       .sort((a, b) => b[1].sum - a[1].sum)
   }, [effItems, rate])
 
-  // 每日花費：不限旅遊區間，直接列出所有有記帳的日期（依 dayBase，不吃 expDate），
-  // 最新日期排最前面。dayBase 有吃 expMethod，篩選成單一付款方式時天數常常只剩
-  // 1（尤其新加的自訂方式，可能只有一兩筆），這種情況下方渲染要放行顯示（見下方
-  // JSX 的顯示條件），不能套用「只有一天就整塊隱藏」那條只給預設檢視用的規則。
   const dailyTotals = useMemo(() => {
     const totals = new Map<string, { sum: number; byMethod: Record<string, number> }>()
     for (const e of dayBase) {
@@ -123,32 +150,32 @@ export default function MoneyTab() {
       .sort((a, b) => b[0].localeCompare(a[0]))
   }, [dayBase, rate])
   const dailyGrandTotal = dailyTotals.reduce((sum, [, v]) => sum + v.sum, 0)
-  // 預設只顯示最新兩天，超過兩天才出現「顯示更多／更少」切換。
   const visibleDailyTotals = dailyExpanded ? dailyTotals : dailyTotals.slice(0, 2)
 
-  // 明細分類頁籤：「全部」+ 只列出有支出的分類（各帶筆數），只影響明細列表。
-  const expTabs = useMemo(() => {
-    const cats = [...new Set(items.map((e) => e.cat))]
-    return [ALL_FILTER, ...cats].map((cat) => ({
-      cat,
-      count: cat === ALL_FILTER ? items.length : items.filter((e) => e.cat === cat).length,
-    }))
-  }, [items])
-
-  const filteredItems = items.filter(
-    (e) =>
-      (expFilter === ALL_FILTER || e.cat === expFilter) &&
-      (expDate === ALL_FILTER || e.spent_on === expDate) &&
-      (expMethod === ALL_FILTER || payMethod(e) === expMethod),
+  const tabScope = useMemo(
+    () => effItems.filter((e) => !expSearch || e.title.toLowerCase().includes(expSearch.toLowerCase())),
+    [effItems, expSearch],
   )
-  const expEmpty =
-    filteredItems.length === 0 && (expFilter !== ALL_FILTER || expDate !== ALL_FILTER || expMethod !== ALL_FILTER)
+  const filteredItems = tabScope.filter((e) => expFilter === ALL_FILTER || e.cat === expFilter)
+  const expEmpty = filteredItems.length === 0
 
   const toggleExpDate = (day: string) => setExpDate((cur) => (cur === day ? ALL_FILTER : day))
-  const toggleExpMethod = (m: string) => setExpMethod((cur) => (cur === m ? ALL_FILTER : m))
+  const toggleExpFilter = (c: string) => setExpFilter((cur) => (cur === c ? ALL_FILTER : c))
 
-  // 付款方式圖例：每日花費、分類統計 header 都會渲染一份，點了會整頁篩選成該付款
-  // 方式（再點同一個取消），兩處共用同一個 expMethod 狀態，畫面上會同步反白。
+  const activeFilterCount =
+    (expMethod !== ALL_FILTER ? 1 : 0) +
+    (daigouFilter !== '不含代購' ? 1 : 0) +
+    (expDate !== ALL_FILTER ? 1 : 0) +
+    (expPayer !== ALL_FILTER ? 1 : 0)
+  const clearFilters = () => {
+    setExpMethod(ALL_FILTER)
+    setDaigouFilter('不含代購')
+    setExpDate(ALL_FILTER)
+    setExpPayer(ALL_FILTER)
+  }
+
+  const settleLines = useMemo(() => settle(items, memberNames, rate), [items, memberNames, rate])
+
   const renderMethodLegend = () => (
     <div className="money-cat-legend">
       {methods.map((m, i) => {
@@ -159,10 +186,10 @@ export default function MoneyTab() {
             type="button"
             className={`money-cat-legend-item${isSelected ? ' is-selected' : ''}`}
             style={{ opacity: expMethod === ALL_FILTER || isSelected ? 1 : 0.4 }}
-            onClick={() => toggleExpMethod(m)}
+            onClick={() => setExpMethod((cur) => (cur === m ? ALL_FILTER : m))}
           >
             <span className="money-cat-legend-swatch" style={{ background: methodColor(i) }} />
-            {methodLabel(m)}
+            {methodLabel(m, cardLabel)}
           </button>
         )
       })}
@@ -175,34 +202,54 @@ export default function MoneyTab() {
 
       <div className="money-header-row">
         <h2 className="spots-h2">記帳</h2>
-        <button
-          type="button"
-          className={`daigou-toggle-btn${showDaigou ? ' is-active' : ''}`}
-          title="開啟後，金額與分類統計會把代購金額算進來"
-          onClick={() => setShowDaigou(!showDaigou)}
-        >
-          {showDaigou ? <CheckSquare size={14} weight="duotone" /> : <Square size={14} weight="duotone" />}
-          含代購
-        </button>
+        <div className="money-header-actions">
+          {!singleMember && (
+            <div className="money-settle-wrap">
+              <button type="button" className="money-header-btn" onClick={() => setSettleOpen(!settleOpen)}>
+                <Scales size={14} weight="duotone" />
+                結算
+              </button>
+              {settleOpen && (
+                <>
+                  <div className="money-filter-hint-backdrop" onClick={() => setSettleOpen(false)} />
+                  <div className="money-settle-popover">
+                    {settleLines.length === 0 ? (
+                      <div>目前已平衡，不需轉帳</div>
+                    ) : (
+                      settleLines.map((l) => (
+                        <div key={`${l.from}-${l.to}`}>
+                          {l.from} 應轉給 {l.to} {formatTWD(l.amount)}
+                        </div>
+                      ))
+                    )}
+                    <div className="money-settle-note">僅計入勾選分帳的項目</div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          <button type="button" className="money-header-btn" onClick={() => setFilterOpen(true)}>
+            <Funnel size={14} weight="duotone" />
+            篩選
+            {activeFilterCount > 0 && <span className="money-filter-badge">{activeFilterCount}</span>}
+          </button>
+        </div>
       </div>
 
       <div className="money-total-row">
         <div className="money-total-body">
-          <div className="money-total-kicker">
-            {showDaigou ? '含代購' : '不含代購'}總支出（台幣計，匯率 {rateStr}）
-          </div>
+          <div className="money-total-kicker">總支出（台幣計，匯率 {rateStr}）</div>
           <div className="money-total-amount">{formatTWD(grandTotal)}</div>
 
-          {/* 雙幣對照：兩欄＋中間分隔線，不是單行文字。 */}
           <div className="money-dual-currency">
             <div className="money-dual-col">
-              <div className="money-dual-label">日幣總計</div>
-              <div className="money-dual-value">{formatJPY(jpyTotal)}</div>
+              <div className="money-dual-label">{currencyName}總計</div>
+              <div className="money-dual-value">{formatJPY(jpyTotal, currencySymbol)}</div>
             </div>
             <div className="money-dual-divider" />
             <div className="money-dual-col">
-              <div className="money-dual-label">日幣現金</div>
-              <div className="money-dual-value">{formatJPY(jpyCashTotal)}</div>
+              <div className="money-dual-label">{currencyName}現金</div>
+              <div className="money-dual-value">{formatJPY(jpyCashTotal, currencySymbol)}</div>
             </div>
             <div className="money-dual-divider" />
             <div className="money-dual-col">
@@ -210,59 +257,62 @@ export default function MoneyTab() {
               <div className="money-dual-value">{formatTWD(twdDirectTotal)}</div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div className="money-payer-row">
-        {memberNames.map((payer, i) => {
-          const jpySum = payerJpySum(payer)
-          const jpyCashSum = payerJpyCashSum(payer)
-          const isLastOdd = memberNames.length % 2 === 1 && i === memberNames.length - 1
-          return (
-            <div key={payer} className={`money-payer-card${isLastOdd ? ' money-payer-card--full' : ''}`}>
-              <div className="money-payer-name">{payer} 已付</div>
-              <div className="money-payer-amount">{formatTWD(payerTotal(payer))}</div>
-              <div className="money-payer-sub">{jpySum > 0 ? `含日幣 ¥${jpySum.toLocaleString('zh-Hant')}` : '全為台幣支付'}</div>
-              <div className="money-payer-sub">含日幣現金 ¥{jpyCashSum.toLocaleString('zh-Hant')}</div>
+          {!singleMember && (
+            <div className="money-payer-row">
+              {memberNames.map((payer, i) => {
+                const jpySum = paidJpyOf(payer)
+                const jpyCashSum = paidJpyCashOf(payer)
+                const isLastOdd = memberNames.length % 2 === 1 && i === memberNames.length - 1
+                return (
+                  <div key={payer} className={`money-payer-card${isLastOdd ? ' money-payer-card--full' : ''}`}>
+                    <div className="money-payer-name">{payer} 已付</div>
+                    <div className="money-payer-amount">{formatTWD(paidTwdOf(payer))}</div>
+                    <div className="money-payer-sub">
+                      {jpySum > 0 ? `含${currencyName} ${currencySymbol}${jpySum.toLocaleString('zh-Hant')}` : '全為台幣支付'}
+                    </div>
+                    <div className="money-payer-sub">
+                      含{currencyName}現金 {currencySymbol}
+                      {jpyCashSum.toLocaleString('zh-Hant')}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-          )
-        })}
+          )}
+        </div>
       </div>
 
       <button type="button" className="btn btn-primary btn-block money-add-btn" onClick={openAddExpense}>
         ＋ 新增支出
       </button>
 
-      {dailyTotals.length > 0 && (dailyTotals.length > 1 || expMethod !== ALL_FILTER) && (
-        <div className="money-cats">
-          <div className="money-cats-header">
-            <div className="money-section-kicker money-daily-kicker">
-              每日花費
-              <button
-                type="button"
-                className="money-filter-hint-btn"
-                aria-label="每日花費說明"
-                onClick={() => setDailyHintOpen(!dailyHintOpen)}
-              >
-                <Funnel size={12} weight="duotone" />
-              </button>
-              {dailyHintOpen && (
-                <>
-                  <div className="money-filter-hint-backdrop" onClick={() => setDailyHintOpen(false)} />
-                  <div className="money-filter-hint-tip">
-                    點一天可篩選下方明細；點右邊的付款方式也可以篩選；再點一次同一個可取消篩選，恢復顯示全部。
-                  </div>
-                </>
-              )}
-            </div>
-            {renderMethodLegend()}
+      <div className="money-cats">
+        <div className="money-cats-header">
+          <div className="money-chart-toggle">
+            <button
+              type="button"
+              className={`money-chart-toggle-btn${chartMode === 'day' ? ' is-selected' : ''}`}
+              onClick={() => setChartMode('day')}
+            >
+              依日期
+            </button>
+            <button
+              type="button"
+              className={`money-chart-toggle-btn${chartMode === 'cat' ? ' is-selected' : ''}`}
+              onClick={() => setChartMode('cat')}
+            >
+              依分類
+            </button>
           </div>
-          {visibleDailyTotals.map(([day, { sum, byMethod }]) => {
+          {renderMethodLegend()}
+        </div>
+        <p className="money-chart-hint">點一項可篩選下方明細；再點一次取消篩選。</p>
+
+        {chartMode === 'day' &&
+          visibleDailyTotals.map(([day, { sum, byMethod }]) => {
             const pct = dailyGrandTotal > 0 ? (sum / dailyGrandTotal) * 100 : 0
             const isSelected = expDate === day
-            // 選了某一天之後，其餘天數的文字＋長條圖除了變灰階，還要再淡化
-            // （opacity 降到 0.4，比預設的 0.85 更淡），凸顯選中的那天——只有實際
-            // 有選日期時才生效，沒有篩選時大家都是原本的淡出樣式，不要整排都變灰。
             const isOtherSelected = expDate !== ALL_FILTER && !isSelected
             const dimOpacity = isSelected ? 1 : isOtherSelected ? 0.4 : 0.85
             return (
@@ -273,10 +323,7 @@ export default function MoneyTab() {
                 style={{ filter: isOtherSelected ? 'grayscale(1)' : 'none' }}
                 onClick={() => toggleExpDate(day)}
               >
-                <span
-                  className="money-cat-name"
-                  style={{ fontWeight: isSelected ? 600 : 400, opacity: dimOpacity }}
-                >
+                <span className="money-cat-name" style={{ fontWeight: isSelected ? 600 : 400, opacity: dimOpacity }}>
                   {formatExpenseDate(day)}
                 </span>
                 <span className="money-cat-bar" style={{ opacity: dimOpacity }}>
@@ -285,10 +332,7 @@ export default function MoneyTab() {
                       <span
                         key={m}
                         className="money-cat-bar-value"
-                        style={{
-                          width: `${sum > 0 ? ((byMethod[m] ?? 0) / sum) * 100 : 0}%`,
-                          background: methodColor(i),
-                        }}
+                        style={{ width: `${sum > 0 ? ((byMethod[m] ?? 0) / sum) * 100 : 0}%`, background: methodColor(i) }}
                       />
                     ))}
                   </span>
@@ -298,48 +342,45 @@ export default function MoneyTab() {
               </button>
             )
           })}
-          {dailyTotals.length > 2 && (
-            <button
-              type="button"
-              className="money-daily-toggle"
-              onClick={() => setDailyExpanded(!dailyExpanded)}
-            >
-              {dailyExpanded ? '顯示更少' : '顯示更多'}
-              {dailyExpanded ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
-            </button>
-          )}
-        </div>
-      )}
+        {chartMode === 'day' && dailyTotals.length > 2 && (
+          <button type="button" className="money-daily-toggle" onClick={() => setDailyExpanded(!dailyExpanded)}>
+            {dailyExpanded ? '顯示更少' : '顯示更多'}
+            {dailyExpanded ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
+          </button>
+        )}
 
-      <div className="money-cats">
-        <div className="money-cats-header">
-          <div className="money-section-kicker">分類統計（台幣）</div>
-          {renderMethodLegend()}
-        </div>
-        {catTotals.map(([cat, { sum, byMethod }]) => {
-          const pct = grandTotal > 0 ? (sum / grandTotal) * 100 : 0
-          return (
-            <div key={cat} className="money-cat-row">
-              <span className="money-cat-name">{cat}</span>
-              <span className="money-cat-bar">
-                <span className="money-cat-bar-fill" style={{ width: `${pct}%` }}>
-                  {methods.map((m, i) => (
-                    <span
-                      key={m}
-                      className="money-cat-bar-value"
-                      style={{
-                        width: `${sum > 0 ? ((byMethod[m] ?? 0) / sum) * 100 : 0}%`,
-                        background: methodColor(i),
-                      }}
-                    />
-                  ))}
+        {chartMode === 'cat' &&
+          catTotals.map(([cat, { sum, byMethod }]) => {
+            const pct = grandTotal > 0 ? (sum / grandTotal) * 100 : 0
+            const isSelected = expFilter === cat
+            const isOtherSelected = expFilter !== ALL_FILTER && !isSelected
+            const dimOpacity = isSelected ? 1 : isOtherSelected ? 0.55 : 1
+            return (
+              <button
+                key={cat}
+                type="button"
+                className="money-cat-row money-daily-row"
+                onClick={() => toggleExpFilter(cat)}
+              >
+                <span className="money-cat-name" style={{ fontWeight: isSelected ? 600 : 400, opacity: dimOpacity }}>
+                  {cat}
                 </span>
-              </span>
-              <span className="money-cat-amount">{formatTWD(sum)}</span>
-              <span className="money-cat-pct">{pct.toFixed(0)}%</span>
-            </div>
-          )
-        })}
+                <span className="money-cat-bar" style={{ opacity: dimOpacity }}>
+                  <span className="money-cat-bar-fill" style={{ width: `${pct}%` }}>
+                    {methods.map((m, i) => (
+                      <span
+                        key={m}
+                        className="money-cat-bar-value"
+                        style={{ width: `${sum > 0 ? ((byMethod[m] ?? 0) / sum) * 100 : 0}%`, background: methodColor(i) }}
+                      />
+                    ))}
+                  </span>
+                </span>
+                <span className="money-cat-amount">{formatTWD(sum)}</span>
+                <span className="money-cat-pct">{pct.toFixed(0)}%</span>
+              </button>
+            )
+          })}
       </div>
 
       <div className="money-detail-section">
@@ -350,19 +391,21 @@ export default function MoneyTab() {
           </button>
         </div>
 
-        <div className="money-exp-tabs">
-          {expTabs.map(({ cat, count }) => (
-            <button
-              key={cat}
-              type="button"
-              className={`money-exp-tab${expFilter === cat ? ' is-selected' : ''}`}
-              onClick={() => setExpFilter(cat)}
-            >
-              {cat}
-              <span className="money-exp-tab-count">{count}</span>
-            </button>
-          ))}
+        <div className="money-search-row">
+          <MagnifyingGlass size={14} weight="duotone" className="money-search-icon" />
+          <input
+            className="input money-search-input"
+            value={expSearch}
+            onChange={(e) => setExpSearch(e.target.value)}
+            placeholder="搜尋明細項目"
+          />
         </div>
+        {expFilter !== ALL_FILTER && (
+          <button type="button" className="tag tag-accent money-cat-filter-tag" onClick={() => setExpFilter(ALL_FILTER)}>
+            篩選分類：{expFilter}
+            <X size={11} weight="duotone" />
+          </button>
+        )}
 
         {expEmpty ? (
           <p className="money-empty">這個分類還沒有支出</p>
@@ -370,37 +413,133 @@ export default function MoneyTab() {
           <div className="money-list">
             {filteredItems.map((e) => {
               const Icon = phosphorIcon(CAT_ICON[e.cat] ?? 'ph-receipt')
+              const isMulti = !!e.payers
               return (
-                <button
-                  key={e.id}
-                  type="button"
-                  className="money-item-row"
-                  onClick={() => openEditExpense(e.id)}
-                >
-                  {Icon && <Icon size={19} weight="duotone" color="var(--color-accent-700)" />}
-                  <div className="money-item-body">
-                    <div className="money-item-title-row">
-                      <div className="money-item-title">{e.title}</div>
-                      {e.daigou && <span className="tag tag-accent-2 money-item-daigou-tag">代購</span>}
+                <button key={e.id} type="button" className="money-item-row" onClick={() => openEditExpense(e.id)}>
+                  <div className="money-item-row-main">
+                    {Icon && <Icon size={19} weight="duotone" color="var(--color-accent-700)" />}
+                    <div className="money-item-body">
+                      <div className="money-item-title-row">
+                        <div className="money-item-title">{e.title}</div>
+                        {e.daigou && <span className="tag tag-accent-2 money-item-daigou-tag">代購</span>}
+                      </div>
+                      <div className="money-item-meta">
+                        {e.spent_on ? `${formatExpenseDate(e.spent_on)} · ` : ''}
+                        {e.cat}
+                        {!singleMember && !isMulti ? ` · ${e.payer} 付` : ''} · {methodLabel(payMethod(e), cardLabel)}
+                      </div>
                     </div>
-                    <div className="money-item-meta">
-                      {e.spent_on ? `${formatExpenseDate(e.spent_on)} · ` : ''}
-                      {e.cat} · {e.payer} 付 · {methodLabel(payMethod(e))}
+                    <div className="money-item-amounts">
+                      <div className="money-item-amount">{e.cur === 'JPY' ? formatJPY(e.amt, currencySymbol) : formatTWD(e.amt)}</div>
+                      <div className="money-item-converted">
+                        {e.cur === 'JPY' ? `≈ ${formatTWD(e.amt * rate)}` : '台幣直付'}
+                      </div>
                     </div>
+                    <PencilSimple size={15} weight="duotone" className="money-item-edit-icon" />
                   </div>
-                  <div className="money-item-amounts">
-                    <div className="money-item-amount">{e.cur === 'JPY' ? formatJPY(e.amt) : formatTWD(e.amt)}</div>
-                    <div className="money-item-converted">
-                      {e.cur === 'JPY' ? `≈ ${formatTWD(e.amt * rate)}` : '台幣直付'}
+                  {!singleMember && isMulti && (
+                    <div className="money-item-payers">
+                      {Object.entries(payersOf(e)).map(([name, amt]) => (
+                        <div key={name} className="money-item-payer">
+                          <span className="money-item-payer-name">{name}</span>
+                          <span className="money-item-payer-amt">
+                            {e.cur === 'JPY' ? formatJPY(amt, currencySymbol) : formatTWD(amt)}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                  <PencilSimple size={15} weight="duotone" className="money-item-edit-icon" />
+                  )}
                 </button>
               )
             })}
           </div>
         )}
       </div>
+
+      {filterOpen && (
+        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && setFilterOpen(false)}>
+          <div className="edit-sheet">
+            <div className="edit-header">
+              <h3 className="edit-title">篩選明細</h3>
+              <button type="button" className="btn btn-ghost edit-close-btn" onClick={() => setFilterOpen(false)} aria-label="關閉">
+                <X size={16} weight="duotone" />
+              </button>
+            </div>
+
+            <div className="edit-kind-block">
+              <div className="edit-section-label">付款方式</div>
+              <div className="edit-kind-chips">
+                {[ALL_FILTER, ...methods].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`edit-kind-chip${expMethod === m ? ' is-selected' : ''}`}
+                    onClick={() => setExpMethod(m)}
+                  >
+                    {m === ALL_FILTER ? ALL_FILTER : methodLabel(m, cardLabel)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="edit-kind-block">
+              <div className="edit-section-label">日期</div>
+              <select className="input" style={{ marginTop: 6 }} value={expDate} onChange={(e) => setExpDate(e.target.value)}>
+                {[ALL_FILTER, ...Array.from(new Set(items.map((e) => e.spent_on).filter((d): d is string => !!d))).sort().reverse()].map(
+                  (d) => (
+                    <option key={d} value={d}>
+                      {d === ALL_FILTER ? ALL_FILTER : formatExpenseDate(d)}
+                    </option>
+                  ),
+                )}
+              </select>
+            </div>
+
+            {!singleMember && (
+              <div className="edit-kind-block">
+                <div className="edit-section-label">身份</div>
+                <div className="edit-kind-chips">
+                  {[ALL_FILTER, ...memberNames].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      className={`edit-kind-chip${expPayer === v ? ' is-selected' : ''}`}
+                      onClick={() => setExpPayer(v)}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="edit-kind-block">
+              <div className="edit-section-label">代購</div>
+              <div className="edit-kind-chips">
+                {(['不含代購', '含代購', '只看代購'] as DaigouFilter[]).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`edit-kind-chip${daigouFilter === v ? ' is-selected' : ''}`}
+                    onClick={() => setDaigouFilter(v)}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="expense-save-row">
+              <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={clearFilters}>
+                清除篩選
+              </button>
+              <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => setFilterOpen(false)}>
+                套用
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && <Toast message={toast.message} />}
     </div>

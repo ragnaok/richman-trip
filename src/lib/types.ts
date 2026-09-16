@@ -102,9 +102,12 @@ export interface Expense {
   cat: string
   cur: Currency
   amt: number
-  payer: Payer
+  payer: Payer // 單一付款人（或多付款人時的主要付款人，payers 有值時以 payers 為準）
+  payers?: Record<Payer, number> // 多付款人各付多少；沒有值＝ payer 一人付 amt 全額
+  splitAmong?: Payer[] // 分攤這筆的人；沒有值＝目前全體成員（既有資料上線後一律視同全員均分）
+  splitAmounts?: Record<Payer, number> // 分攤金額覆寫（不等額分攤時用）；沒指定的人自動平分剩餘
   method?: PayMethod // 沒有值視同 'cash'（舊資料相容，見 lib/money.ts payMethod()）
-  daigou?: boolean // 代購：不計入「不含代購」的統計，明細一律照常顯示
+  daigou?: boolean // 代購：不計入「不含代購」的統計，也不列入結算
   spent_on?: string // 日期 'YYYY-MM-DD'，不綁行程年份、不限旅遊區間
   updated_at: number
   deleted: 0 | 1

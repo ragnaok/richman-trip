@@ -1122,8 +1122,9 @@ body {
   color: var(--color-accent-2-700);
 }
 
-/* 記帳的儲存/刪除同一列，9:1 寬度比——刪除縮成純圖示，其他 sheet 的刪除鈕仍是
-   獨立一整列的文字按鈕（見上面 .edit-delete-btn 的其他用法），不共用這個比例。 */
+/* 記帳的儲存/刪除同一列——刪除縮成純圖示，寬度跟旁邊的付款與分帳按鈕
+   （.expense-payer-panel-btn）一致，都是固定 44px，不是依比例分配；其他 sheet 的
+   刪除鈕仍是獨立一整列的文字按鈕（見上面 .edit-delete-btn 的其他用法），不共用這個寬度。 */
 .expense-save-row {
   display: flex;
   gap: 8px;
@@ -1131,11 +1132,74 @@ body {
 }
 
 .expense-save-btn {
-  flex: 9;
+  flex: 1;
 }
 
 .expense-delete-btn {
+  flex: none;
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* 刪除二次確認的共用置中彈窗（跳出視窗）——不用 window.confirm，因為 PWA 加到主畫面／
+   部分內嵌瀏覽器環境下原生對話框不會正常彈出，點刪除會完全沒反應（見 ConfirmDialog.tsx）。
+   各處刪除按鈕（記帳、分類管理、付款方式管理、行程、行李、景點）共用同一組樣式。
+   z-index 要蓋過 .edit-sheet 本身（30）跟疊在它上面的子面板（31、32），確保永遠疊最上層。 */
+.confirm-dialog-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 33;
+  background: color-mix(in srgb, var(--color-neutral-900) 45%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.confirm-dialog {
+  width: 100%;
+  max-width: 320px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  box-shadow: var(--shadow-md);
+  animation: fadein 0.15s ease-out;
+}
+
+.confirm-dialog p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.confirm-dialog-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.confirm-dialog-row .btn {
   flex: 1;
+  font-size: 12.5px;
+}
+
+/* .btn-primary:hover/:active（tokens.css）跟這裡的底色特異度一樣是一個 class，等特異度
+   下由後載入的規則獲勝，但沒蓋 :hover/:active 的話，hover 還是會被 .btn-primary:hover
+   的 (0,2,0) 蓋掉、跳成藍色再變回紅色，很突兀——這裡跟著補上同色階的 hover/active。 */
+.confirm-dialog-danger-btn {
+  background: var(--color-accent-2-700);
+  border-color: var(--color-accent-2-700);
+}
+
+.confirm-dialog-danger-btn:hover {
+  background: var(--color-accent-2-800);
+  border-color: var(--color-accent-2-800);
+}
+
+.confirm-dialog-danger-btn:active {
+  background: var(--color-accent-2-900);
+  border-color: var(--color-accent-2-900);
 }
 
 /* — 連結景點 — */
@@ -1766,22 +1830,78 @@ body {
   cursor: pointer;
 }
 
-/* — 每日花費 kicker 旁的 filter 說明小圖示 + popup — */
-.money-daily-kicker {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 5px;
+.money-chart-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
 }
 
-.money-filter-hint-btn {
+/* — 每日花費／分類統計切換 — */
+.money-chart-toggle {
+  flex: none;
+  display: flex;
+  border: 1px solid var(--color-divider);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.money-chart-toggle-btn {
   border: 0;
-  background: transparent;
   cursor: pointer;
-  padding: 2px;
-  display: inline-flex;
-  color: inherit;
-  opacity: 0.7;
+  font: inherit;
+  font-size: 11.5px;
+  padding: 5px 10px;
+  background: transparent;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.money-chart-toggle-btn.is-selected {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* — 右上角「篩選」「結算」按鈕 — */
+.money-header-actions {
+  flex: none;
+  display: flex;
+  gap: 8px;
+}
+
+.money-header-btn {
+  position: relative;
+  flex: none;
+  border: 1px solid var(--color-divider);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.money-filter-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-accent-2);
+  color: var(--color-bg);
+  font-size: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.money-settle-wrap {
+  position: relative;
 }
 
 .money-filter-hint-backdrop {
@@ -1790,22 +1910,24 @@ body {
   z-index: 4;
 }
 
-.money-filter-hint-tip {
+.money-settle-popover {
   position: absolute;
-  top: 18px;
-  left: 0;
+  top: 36px;
+  right: 0;
   z-index: 5;
-  width: 220px;
+  min-width: 240px;
   background: var(--color-text);
   color: var(--color-bg);
-  border-radius: var(--radius-md);
-  padding: 9px 11px;
-  font-size: 11px;
-  letter-spacing: normal;
-  text-transform: none;
-  white-space: normal;
-  line-height: 1.5;
+  border-radius: 2px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
   box-shadow: var(--shadow-md);
+}
+
+.money-settle-note {
+  opacity: 0.7;
+  margin-top: 4px;
 }
 
 .money-cat-name {
@@ -1910,37 +2032,65 @@ body {
   margin-top: 22px;
 }
 
-/* — 明細分類頁籤 — */
-.money-exp-tabs {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 10px 0 2px;
+/* — 明細搜尋框 + 分類篩選標籤（取代舊的分類頁籤，見 MoneyTab 開頭註解） — */
+.money-search-row {
+  position: relative;
+  margin-top: 10px;
 }
 
-.money-exp-tab {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--color-divider);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--color-text);
+.money-search-icon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: color-mix(in srgb, var(--color-text) 45%, transparent);
+}
+
+.money-search-input {
+  padding-left: 28px;
+  font-size: 13px;
+}
+
+.money-cat-filter-tag {
+  margin-top: 10px;
+  border: 0;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
-  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
-.money-exp-tab.is-selected {
-  background: var(--color-text);
-  color: var(--color-bg);
+/* padding-left 對齊上面標題文字的起點（icon 19px + .money-item-row-main 的 gap 10px）；
+   padding-right 讓金額對齊主金額（.money-item-amount）本身，不是整排最右緣——最右緣
+   再過去還有編輯鉛筆圖示（15px）跟它前面的 gap（10px）。 */
+.money-item-payers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 3px;
+  padding-left: 29px;
+  padding-right: 25px;
 }
 
-.money-exp-tab-count {
-  opacity: 0.55;
-  font-size: 10.5px;
+.money-item-payer {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+.money-item-payer-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.money-item-payer-amt {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .money-empty {
@@ -1957,8 +2107,7 @@ body {
 
 .money-item-row {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  flex-direction: column;
   width: 100%;
   padding: 10px 0;
   border: 0;
@@ -1968,6 +2117,13 @@ body {
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.money-item-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
 }
 
 .money-item-row:first-child {
@@ -2145,6 +2301,12 @@ body {
   text-overflow: ellipsis;
 }
 
+/* 文字太長、槽位太窄時，flex 預設會連圖示一起壓扁；圖示鎖住不縮，讓文字自己被截斷
+   （見 lib/money.ts truncateMethodLabel，這裡只是保底，避免更窄的螢幕仍然壓到圖示）。 */
+.expense-method-card svg {
+  flex: none;
+}
+
 .expense-method-card.is-selected {
   background: var(--color-text);
   color: var(--color-bg);
@@ -2223,13 +2385,126 @@ body {
   z-index: 31;
 }
 
-.method-mgr-builtin-row {
-  opacity: 0.55;
-  font-size: 13.5px;
+/* — 付款與分帳面板（PayerSplitSheet）：同樣疊在 ExpenseSheet 之上 — */
+.payer-split-overlay {
+  z-index: 31;
 }
 
-.method-mgr-builtin-row span {
+.payer-split-sheet {
+  max-height: 80%;
+}
+
+/* 跟 .edit-kind-block 同一套間距慣例：外層 gap 只在 .edit-sheet 的 flex gap 算一次，
+   這裡只管組內（label 與列表之間、列與列之間）的間距，不要疊加。 */
+.payer-split-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.payer-split-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.payer-split-check {
+  flex: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-divider);
+  background: transparent;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 2px;
+}
+
+.payer-split-check.is-checked {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.payer-split-checkbox {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  flex: none;
+}
+
+.payer-split-amt {
+  flex: 8;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.payer-split-warning {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--color-accent-2-700);
+}
+
+.payer-split-total {
+  margin: 0;
+  font-size: 15px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--color-accent-700);
+}
+
+.expense-payer-panel-btn {
+  flex: none;
+  width: 44px;
+  border: 1px solid var(--color-divider);
+  cursor: pointer;
+  background: transparent;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+}
+
+.expense-payer-panel-btn.is-active {
+  color: var(--color-accent);
+}
+
+.method-mgr-cash-label {
+  opacity: 0.55;
+  font-size: 13.5px;
   flex: 1;
+}
+
+.method-mgr-default-btn {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  border: 1px solid var(--color-divider);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  padding: 0 10px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.method-mgr-default-btn.is-default {
+  background: var(--color-accent);
+  color: var(--color-bg);
 }
 
 /* ==========================================================================
@@ -2528,6 +2803,25 @@ body {
 .settings-date-row .field {
   flex: 1;
   min-width: 0;
+}
+
+.settings-currency-row {
+  display: flex;
+  gap: 10px;
+}
+
+.settings-currency-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-currency-symbol-field {
+  flex: none !important;
+  width: 64px;
+}
+
+.settings-currency-symbol-field .input {
+  text-align: center;
 }
 
 .settings-date-warning {

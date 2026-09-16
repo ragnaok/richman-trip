@@ -111,6 +111,9 @@ function rowToExpense(r: Record<string, unknown>): Expense {
     method: (r.method as Expense['method']) ?? undefined,
     daigou: toBool(r.daigou),
     spent_on: (r.spent_on as string) ?? undefined,
+    payers: r.payers ? (JSON.parse(r.payers as string) as Expense['payers']) : undefined,
+    splitAmong: r.split_among ? (JSON.parse(r.split_among as string) as Expense['splitAmong']) : undefined,
+    splitAmounts: r.split_amounts ? (JSON.parse(r.split_amounts as string) as Expense['splitAmounts']) : undefined,
     updated_at: Number(r.updated_at),
     deleted: toBool(r.deleted) ? 1 : 0,
   }

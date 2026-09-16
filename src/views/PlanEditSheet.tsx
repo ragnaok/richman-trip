@@ -6,6 +6,7 @@ import { phosphorIcon } from '../lib/icons'
 import { formatEditDayLabel, dayRange, mdToIso, isoToMd } from '../lib/time'
 import { KIND, NA, DAYINFO, findSpot } from '../data/spots'
 import Toast, { useToast } from '../components/Toast'
+import ConfirmDialog from '../components/ConfirmDialog'
 import SpotEditSheet from './SpotEditSheet'
 import PhotoUpload from '../components/PhotoUpload'
 import type { Kind, PlanItem } from '../lib/types'
@@ -54,6 +55,7 @@ export default function PlanEditSheet() {
   const [creatingSpotName, setCreatingSpotName] = useState<string | null>(null)
   const [candsCleared, setCandsCleared] = useState(false)
   const [initializedId, setInitializedId] = useState<PlanItem['id'] | null>(null)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   // draft 換了（不同筆行程/新草稿）時才重新灌入表單狀態，避免每次 render 都覆蓋使用者輸入。
   if (draft && draft.id !== initializedId) {
@@ -161,7 +163,6 @@ export default function PlanEditSheet() {
   }
 
   const handleDelete = () => {
-    if (!window.confirm(`刪除「${title}」這筆行程？`)) return
     deletePlan(draft.id)
     showToast(`已刪除行程 · ${title}`)
     close()
@@ -408,12 +409,24 @@ export default function PlanEditSheet() {
             <a className="btn btn-secondary" href={navUrl(q || title)} target="_blank" rel="noreferrer">
               <NavigationArrow size={16} weight="duotone" /> 在 Google Maps 開啟
             </a>
-            <button type="button" className="btn btn-secondary edit-delete-btn" onClick={handleDelete}>
+            <button
+              type="button"
+              className="btn btn-secondary edit-delete-btn"
+              onClick={() => setConfirmDeleteOpen(true)}
+            >
               <Trash size={16} weight="duotone" /> 刪除
             </button>
           </div>
         )}
       </div>
+
+      {confirmDeleteOpen && (
+        <ConfirmDialog
+          message={`刪除「${title}」這筆行程？`}
+          onCancel={() => setConfirmDeleteOpen(false)}
+          onConfirm={handleDelete}
+        />
+      )}
 
       {toast && <Toast message={toast.message} />}
     </div>
