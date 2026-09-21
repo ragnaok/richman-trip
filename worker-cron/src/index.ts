@@ -195,12 +195,13 @@ const TOMBSTONE_TABLES = ['plans', 'spots_meta', 'spots', 'pack_items', 'expense
 const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 // 每分鐘都被觸發（見檔頭），但清墓碑不需要跟提醒一樣每分鐘掃一次全表，一天一次就夠：
-// 只在（日本時間）00:00 那次觸發時真的執行 DELETE，其餘 per-minute 觸發直接跳過。
-// 用日本時間對齊是跟 computeFireAt 那套 day/t 的時區假設一致；cron 若剛好漏掉 00:00
-// 那一分鐘（外部觸發源掉一拍），就等隔天 00:00 再清，不影響正確性只是晚一天。
+// 只在台灣時間 00:00 那次觸發時真的執行 DELETE，其餘 per-minute 觸發直接跳過。用台灣
+// 時間（UTC+8，不是行程 day/t 用的日本時間 UTC+9）是因為維運清理跟著開發者所在時區，
+// 跟行程時間的時區假設是兩件事。cron 若剛好漏掉 00:00 那一分鐘（外部觸發源掉一拍），
+// 就等隔天 00:00 再清，不影響正確性只是晚一天。
 function isDailyPurgeWindow(now: number): boolean {
-  const jst = new Date(now + 9 * 60 * 60 * 1000)
-  return jst.getUTCHours() === 0 && jst.getUTCMinutes() === 0
+  const tst = new Date(now + 8 * 60 * 60 * 1000)
+  return tst.getUTCHours() === 0 && tst.getUTCMinutes() === 0
 }
 
 async function purgeOldTombstones(db: D1Database) {
