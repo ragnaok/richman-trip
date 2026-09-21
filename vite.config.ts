@@ -12,9 +12,19 @@ import { execSync } from 'node:child_process'
 // checkout 上跑，這裡跟 wrangler 自動注入的 CF_PAGES_COMMIT_SHA 會是同一個 commit。
 const gitHash = execSync('git rev-parse --short=7 HEAD').toString().trim()
 
+// __GIT_TAG__：HEAD 當下指到的 git tag，沒有就是 null——只有 build 當下 HEAD 剛好
+// 打了 tag 才會有值，不是「離 HEAD 最近的 tag」（那樣會誤導成好像每個 commit 都有版號）。
+let gitTag: string | null = null
+try {
+  gitTag = execSync('git describe --tags --exact-match HEAD 2>/dev/null').toString().trim() || null
+} catch {
+  gitTag = null
+}
+
 export default defineConfig({
   define: {
     __GIT_HASH__: JSON.stringify(gitHash),
+    __GIT_TAG__: JSON.stringify(gitTag),
   },
   server: {
     // `npm run dev` 本身沒有 /api/* 後端，proxy 到另外跑的 `npm run dev:cf`（8788），
