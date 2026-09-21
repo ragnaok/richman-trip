@@ -2033,6 +2033,20 @@ body {
   margin-top: 22px;
 }
 
+/* 明細標題列：跟 .money-cats-header 分開——那個 class 的 kicker 固定 min-width
+   是為了讓分類統計／每日花費兩個 header 的付款方式圖例對齊寬度，這裡沒有圖例，
+   套用會讓「明細」兩字位置跟設計稿不一致（多了不必要的固定寬度、flex-start 對齊）。 */
+.money-detail-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.money-detail-header .money-section-kicker {
+  flex: 1;
+}
+
 /* — 明細搜尋框 + 分類篩選標籤（取代舊的分類頁籤，見 MoneyTab 開頭註解） — */
 .money-search-row {
   position: relative;

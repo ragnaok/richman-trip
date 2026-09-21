@@ -414,7 +414,7 @@ export default function MoneyTab() {
       </div>
 
       <div className="money-detail-section">
-        <div className="money-cats-header">
+        <div className="money-detail-header">
           <div className="money-section-kicker">明細</div>
           <button type="button" className="btn btn-ghost" onClick={() => openCatMgr('money')}>
             <SlidersHorizontal size={13} weight="duotone" /> 管理分類
