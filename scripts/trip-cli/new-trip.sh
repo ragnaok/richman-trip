@@ -49,6 +49,19 @@ if ! npx wrangler auth list 2>&1 | grep -qE "│ *${PROFILE} *│"; then
   npx wrangler auth create "$PROFILE"
 fi
 
+# 這個 profile 的 OAuth session 有可能同時能存取多個 Cloudflare account（例如
+# 受邀成為別人帳號的協作者），這時候接下來的 wrangler d1 create 等指令會在非
+# 互動模式下直接失敗噴「More than one account available」——先探測、需要的話
+# 讓使用者選一個，並存進 trip.conf 供之後 deploy-trip.sh／deploy-worker-cron.sh
+# 使用（見 lib.sh resolve_account_id／load_trip_conf 的註解）。
+ACCOUNT_ID="$(resolve_account_id "$PROFILE")"
+if [ -n "$ACCOUNT_ID" ]; then
+  export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
+  log_ok "profile「${PROFILE}」底下有多個帳號，這次用 ${ACCOUNT_ID}。"
+else
+  log_info "profile「${PROFILE}」只對應一個帳號，不需要另外指定 account_id。"
+fi
+
 PAGES_PROJECT="${TRIP}-trip"
 PROD_BRANCH="$TRIP"
 D1_NAME="$TRIP"
@@ -122,6 +135,7 @@ PROFILE=${PROFILE}
 PAGES_PROJECT=${PAGES_PROJECT}
 PROD_BRANCH=${PROD_BRANCH}
 D1_NAME=${D1_NAME}
+ACCOUNT_ID=${ACCOUNT_ID}
 CONF
 
 printf '這趟行程的標題（index.html <title>／加到主畫面的名稱，之後也可以在設定頁改）： '

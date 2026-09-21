@@ -27,7 +27,7 @@ scripts/trip-cli/deploy-worker-cron.sh <trip-slug>
 ```
 local-trips/<trip>/
   wrangler.toml   # D1 binding、Pages 專案名（deploy-trip.sh 部署前後會換入/換回根目錄那份）
-  trip.conf       # PROFILE / PAGES_PROJECT / PROD_BRANCH / D1_NAME
+  trip.conf       # PROFILE / PAGES_PROJECT / PROD_BRANCH / D1_NAME / ACCOUNT_ID（選填）
   title.txt       # index.html <title> 跟 apple-mobile-web-app-title 的值
   assets/
     hero-photo.jpg  # 沒放就維持範本預設圖，可以先跳過之後再放
@@ -40,6 +40,17 @@ favicon／PWA icon（加到主畫面用的圖示）**不在這裡**——那兩�
 **這整個資料夾不進 git**，換一台機器部署同一趟行程要自己把它搬過去（例如放
 雲端硬碟、或用密碼管理器的附件功能）。這是刻意的取捨：main 上因此永遠不會
 出現任何真實行程的標題、照片或部署身分，代價是這份素材沒有 git 版本備份。
+
+### 什麼時候需要 `ACCOUNT_ID`
+
+`PROFILE` 只決定用哪組 Cloudflare 登入憑證，不是帳號本身——如果這組憑證同時
+能存取多個 Cloudflare account（例如受邀成為別人帳號的協作者），`wrangler`
+大部分指令在非互動模式下會直接失敗，噴 `More than one account available`。
+`new-trip.sh` 建立新行程時會自動探測、需要的話讓你選一個並存進
+`trip.conf`；如果是手動修 `trip.conf`（例如舊行程原本沒有這欄），可以用
+`wrangler d1 list --profile <profile>` 觸發同樣的錯誤訊息，把想用的
+`account_id` 貼進 `ACCOUNT_ID=`。單一帳號的 profile 不會遇到這個問題，留空
+即可。
 
 ## 這兩支腳本做了什麼
 
