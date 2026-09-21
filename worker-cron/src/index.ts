@@ -185,6 +185,22 @@ async function sendDueReminders(db: D1Database, vapidPrivateKey: string, planMap
   await db.batch(statements)
 }
 
+// 墓碑（deleted=1）留存夠久給其他裝置同步到刪除事件後就沒用了，尤其是帶照片
+// （base64 存在 TEXT 欄位，見 lib/imageUpload.ts）的列，長期累積會讓 D1 跟每次
+// pull 的 payload 越來越肥。1 週是「多數裝置不會離線超過一趟行程」的經驗值；
+// 若有裝置離線超過 1 週才回來，會收不到這批已被清掉的刪除事件、本機留著這筆
+// 舊資料——這是接受的取捨，跟 push_subs 送失敗不重試同一個精神（見檔頭註解）。
+// settings 表沒有 deleted 欄位，不在這份清單裡。
+const TOMBSTONE_TABLES = ['plans', 'spots_meta', 'spots', 'pack_items', 'expenses', 'cats', 'payment_methods', 'hotels', 'members'] as const
+const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
+async function purgeOldTombstones(db: D1Database) {
+  const cutoff = Date.now() - TOMBSTONE_TTL_MS
+  await db.batch(
+    TOMBSTONE_TABLES.map((table) => db.prepare(`DELETE FROM ${table} WHERE deleted = 1 AND updated_at < ?`).bind(cutoff)),
+  )
+}
+
 async function processTrip(db: D1Database, vapidPrivateKey: string) {
   const plansResult = await db
     .prepare(
@@ -193,6 +209,7 @@ async function processTrip(db: D1Database, vapidPrivateKey: string) {
     .all<PlanRow>()
   const planMap = await resyncReminders(db, plansResult.results)
   await sendDueReminders(db, vapidPrivateKey, planMap)
+  await purgeOldTombstones(db)
 }
 
 async function runAllTrips(env: Env) {

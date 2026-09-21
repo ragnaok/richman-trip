@@ -27,6 +27,7 @@ import Toast, { useToast } from '../components/Toast'
 import PhotoUpload from '../components/PhotoUpload'
 import { fileToSquareIconDataUrl } from '../lib/imageUpload'
 import { apiFetchJson, ApiError } from '../lib/api'
+import { forceSync, getPendingOutboxSummary, type PendingOutboxSummary } from '../lib/sync'
 import type { StoredHotel } from '../lib/types'
 
 interface HotelDraft {
@@ -165,6 +166,41 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
       }
     } finally {
       window.location.reload()
+    }
+  }
+
+  // 強制同步是破壞性操作（清空本機重建，見 lib/sync.ts forceSync 註解），按下後先列出
+  // outbox 裡還沒上傳的變更數，確定按鈕還要倒數幾秒才能按，避免手滑誤觸。
+  const FORCE_SYNC_CONFIRM_SECONDS = 5
+  const [syncBusy, setSyncBusy] = useState(false)
+  const [syncConfirm, setSyncConfirm] = useState<PendingOutboxSummary | null>(null)
+  const [syncConfirmCountdown, setSyncConfirmCountdown] = useState(0)
+
+  useEffect(() => {
+    if (!syncConfirm || syncConfirmCountdown <= 0) return
+    const t = setTimeout(() => setSyncConfirmCountdown((s) => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [syncConfirm, syncConfirmCountdown])
+
+  async function handleOpenForceSyncConfirm() {
+    setSyncConfirm(await getPendingOutboxSummary())
+    setSyncConfirmCountdown(FORCE_SYNC_CONFIRM_SECONDS)
+  }
+
+  function cancelForceSync() {
+    setSyncConfirm(null)
+  }
+
+  async function confirmForceSync() {
+    setSyncConfirm(null)
+    setSyncBusy(true)
+    try {
+      await forceSync()
+      showToast('已同步最新資料')
+    } catch {
+      showToast('同步失敗，請檢查網路連線')
+    } finally {
+      setSyncBusy(false)
     }
   }
 
@@ -625,6 +661,52 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
             <SignOut size={16} weight="duotone" /> 登出
           </button>
         </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="edit-section-label">資料同步</div>
+        <button
+          type="button"
+          className="btn btn-block btn-secondary settings-push-btn"
+          disabled={syncBusy}
+          onClick={handleOpenForceSyncConfirm}
+        >
+          {syncBusy ? (
+            <CircleNotch size={16} weight="bold" className="settings-rate-sync-spin" />
+          ) : (
+            <ArrowsClockwise size={16} weight="duotone" />
+          )}
+          {syncBusy ? '同步中…' : '強制同步資料'}
+        </button>
+        {syncConfirm && (
+          <div className="settings-date-warning">
+            <p>
+              會清空本機所有資料，完全以伺服器資料重新下載一次，此動作無法復原。
+              {syncConfirm.total > 0 ? (
+                <>
+                  {' '}
+                  本機還有 <b>{syncConfirm.total}</b> 筆尚未上傳的變更會被<b>捨棄</b>：
+                  {syncConfirm.byTable.map((t) => `${t.label} ${t.count} 筆`).join('、')}。
+                </>
+              ) : (
+                ' 目前沒有尚未上傳的變更。'
+              )}
+            </p>
+            <div className="settings-date-warning-row">
+              <button type="button" className="btn btn-secondary" onClick={cancelForceSync}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary settings-date-danger-btn"
+                disabled={syncConfirmCountdown > 0}
+                onClick={confirmForceSync}
+              >
+                {syncConfirmCountdown > 0 ? `確定強制同步（${syncConfirmCountdown}）` : '確定強制同步'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="settings-section">

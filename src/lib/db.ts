@@ -207,3 +207,16 @@ export async function deleteOps(opIds: number[]): Promise<void> {
   await Promise.all(opIds.map((id) => tx.store.delete(id)))
   await tx.done
 }
+
+/** 設定頁「強制同步資料」用：整批捨棄還沒送出的本地變更，讓強制同步真的以伺服器為準。 */
+export async function clearOutbox(): Promise<void> {
+  const db = await getDB()
+  await db.clear('ops')
+}
+
+export async function clearStore<K extends 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels' | 'payment_methods'>(
+  storeName: K,
+): Promise<void> {
+  const db = await getDB()
+  await db.clear(storeName)
+}
