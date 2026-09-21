@@ -7,6 +7,9 @@
 # 底下，刻意不進 git——main 上不會出現任何真實行程的痕跡，換一台機器部署同一趟
 # 行程要自己把 local-trips/<trip>/ 搬過去（見 scripts/trip-cli/README.md）。
 #
+# 刻意不做 git checkout main／git pull，也不擋工作目錄有沒有未 commit 的變更——
+# 直接以當前進度部署。
+#
 # 用法：scripts/trip-cli/new-trip.sh <trip-slug>
 # 例如：scripts/trip-cli/new-trip.sh hokkaido
 set -euo pipefail
@@ -29,14 +32,6 @@ cd "$REPO_ROOT"
 
 if [ -d "$LOCAL_TRIPS_DIR/$TRIP" ]; then
   log_err "$LOCAL_TRIPS_DIR/$TRIP 已經存在，這趟行程是不是已經開過了？"
-  exit 1
-fi
-
-require_clean_git
-log_info "切到 main 並更新到最新……"
-git checkout main
-if ! git pull --ff-only; then
-  log_err "git pull 失敗（可能離線，或本機 main 跟遠端分岔了），手動處理後再重跑。"
   exit 1
 fi
 

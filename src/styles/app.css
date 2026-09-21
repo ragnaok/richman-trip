@@ -2033,10 +2033,30 @@ body {
   margin-top: 22px;
 }
 
+/* 明細標題列：跟 .money-cats-header 分開——那個 class 的 kicker 固定 min-width
+   是為了讓分類統計／每日花費兩個 header 的付款方式圖例對齊寬度，這裡沒有圖例，
+   套用會讓「明細」兩字位置跟設計稿不一致（多了不必要的固定寬度、flex-start 對齊）。 */
+.money-detail-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.money-detail-header .money-section-kicker {
+  flex: 1;
+}
+
+/* 排序／管理分類按鈕比照設計稿縮小成跟 kicker 同量級的尺寸——套用預設 .btn-ghost
+   （font-size:14px、padding 明顯比較大）會把整列撐高，明細標題跟搜尋框之間看起來
+   空得比設計稿多，不是搜尋框 margin-top 的問題。 */
+.money-detail-header .btn-ghost {
+  font-size: 11.5px;
+  padding: 3px 7px;
+}
+
 /* — 明細搜尋框 + 分類篩選標籤（取代舊的分類頁籤，見 MoneyTab 開頭註解） — */
 .money-search-row {
   position: relative;
-  margin-top: 10px;
 }
 
 .money-search-icon {
@@ -2050,6 +2070,48 @@ body {
 .money-search-input {
   padding-left: 28px;
   font-size: 13px;
+}
+
+.money-sort-wrap {
+  position: relative;
+}
+
+.money-sort-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: 5;
+  min-width: 130px;
+  overflow: hidden;
+}
+
+.money-sort-menu-item {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text);
+}
+
+.money-sort-menu-item.is-selected {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  color: var(--color-accent-700);
+}
+
+.money-sort-menu-icon {
+  margin-left: auto;
 }
 
 .money-cat-filter-tag {

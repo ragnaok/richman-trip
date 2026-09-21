@@ -8,6 +8,8 @@ import {
   Scales,
   X,
   MagnifyingGlass,
+  SortAscending,
+  SortDescending,
 } from '@phosphor-icons/react'
 import { useStore, useMemberNames } from '../lib/store'
 import { CAT_ICON } from '../data/spots'
@@ -32,11 +34,15 @@ import Toast, { useToast } from '../components/Toast'
 
 const ALL_FILTER = '全部'
 type DaigouFilter = '不含代購' | '含代購' | '只看代購'
+type ExpSortKey = 'date' | 'amt' | 'title'
+const SORT_LABEL: Record<ExpSortKey, string> = { date: '日期', amt: '金額', title: '名稱' }
+const SORT_OPTIONS: ExpSortKey[] = ['date', 'amt', 'title']
 
 /**
  * 記帳分頁。金額一律走 lib/money.ts 的 twd() 以台幣為基準。
  * 區塊順序：總覽卡（總額＋雙幣對照＋各人已付，單一身份時不顯示已付）→ 新增支出按鈕 →
- * 洞察區（每日花費／分類統計合併成一個可切換的圖表）→ 明細（搜尋＋可清除的分類篩選標籤）。
+ * 洞察區（每日花費／分類統計合併成一個可切換的圖表）→ 明細（搜尋＋排序＋可清除的分類篩選標籤）。
+ * 明細排序（日期／金額／名稱）只影響列表顯示順序，不影響上面總額／圖表等統計。
  *
  * 篩選（付款方式／日期／身份／代購）統一收在右上角「篩選」bottom sheet，跟明細搜尋框、
  * 分類篩選標籤是分開的兩件事：篩選 sheet 的條件會整頁套用（總額／已付／圖表／明細都跟著
@@ -67,6 +73,9 @@ export default function MoneyTab() {
   const [dailyExpanded, setDailyExpanded] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
   const [settleOpen, setSettleOpen] = useState(false)
+  const [expSort, setExpSort] = useState<ExpSortKey>('date')
+  const [expSortDir, setExpSortDir] = useState<'asc' | 'desc'>('desc')
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
 
   const { toast, showToast } = useToast()
   const { containerRef, pull, status } = usePullToRefresh({
@@ -158,6 +167,28 @@ export default function MoneyTab() {
   )
   const filteredItems = tabScope.filter((e) => expFilter === ALL_FILTER || e.cat === expFilter)
   const expEmpty = filteredItems.length === 0
+
+  // 明細排序：日期／金額／名稱三選一，同值時維持原本（updated_at 倒序）順序。
+  const sortedItems = useMemo(() => {
+    return filteredItems.slice().sort((a, b) => {
+      let cmp = 0
+      if (expSort === 'date') cmp = (a.spent_on ?? '').localeCompare(b.spent_on ?? '')
+      else if (expSort === 'amt') cmp = twd(a, rate) - twd(b, rate)
+      else cmp = a.title.localeCompare(b.title, 'zh-Hant')
+      if (cmp === 0) cmp = filteredItems.indexOf(a) - filteredItems.indexOf(b)
+      return expSortDir === 'desc' ? -cmp : cmp
+    })
+  }, [filteredItems, expSort, expSortDir, rate])
+
+  const pickExpSort = (key: ExpSortKey) => {
+    if (expSort === key) {
+      setExpSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+    } else {
+      setExpSort(key)
+      setExpSortDir(key === 'title' ? 'asc' : 'desc')
+    }
+    setSortMenuOpen(false)
+  }
 
   const toggleExpDate = (day: string) => setExpDate((cur) => (cur === day ? ALL_FILTER : day))
   const toggleExpFilter = (c: string) => setExpFilter((cur) => (cur === c ? ALL_FILTER : c))
@@ -383,8 +414,37 @@ export default function MoneyTab() {
       </div>
 
       <div className="money-detail-section">
-        <div className="money-cats-header">
+        <div className="money-detail-header">
           <div className="money-section-kicker">明細</div>
+          <div className="money-sort-wrap">
+            <button type="button" className="btn btn-ghost" onClick={() => setSortMenuOpen(!sortMenuOpen)}>
+              {expSortDir === 'desc' ? <SortAscending size={14} weight="duotone" /> : <SortDescending size={14} weight="duotone" />}
+              排序：{SORT_LABEL[expSort]}
+            </button>
+            {sortMenuOpen && (
+              <>
+                <div className="money-filter-hint-backdrop" onClick={() => setSortMenuOpen(false)} />
+                <div className="money-sort-menu">
+                  {SORT_OPTIONS.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`money-sort-menu-item${expSort === key ? ' is-selected' : ''}`}
+                      onClick={() => pickExpSort(key)}
+                    >
+                      {SORT_LABEL[key]}
+                      {expSort === key &&
+                        (expSortDir === 'desc' ? (
+                          <SortAscending size={13} weight="duotone" className="money-sort-menu-icon" />
+                        ) : (
+                          <SortDescending size={13} weight="duotone" className="money-sort-menu-icon" />
+                        ))}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button type="button" className="btn btn-ghost" onClick={() => openCatMgr('money')}>
             <SlidersHorizontal size={13} weight="duotone" /> 管理分類
           </button>
@@ -399,6 +459,7 @@ export default function MoneyTab() {
             placeholder="搜尋明細項目"
           />
         </div>
+
         {expFilter !== ALL_FILTER && (
           <button type="button" className="tag tag-accent money-cat-filter-tag" onClick={() => setExpFilter(ALL_FILTER)}>
             篩選分類：{expFilter}
@@ -410,7 +471,7 @@ export default function MoneyTab() {
           <p className="money-empty">這個分類還沒有支出</p>
         ) : (
           <div className="money-list">
-            {filteredItems.map((e) => {
+            {sortedItems.map((e) => {
               const Icon = phosphorIcon(CAT_ICON[e.cat] ?? 'ph-receipt')
               const isMulti = !!e.payers
               return (

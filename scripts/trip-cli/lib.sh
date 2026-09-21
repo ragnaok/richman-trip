@@ -28,17 +28,6 @@ confirm_yes() {
   fi
 }
 
-# 目前工作目錄必須是乾淨的（沒有未提交的變更），否則後面的 git checkout 有弄丟
-# 工作的風險（deploy-trip.sh 換入行程素材、跑完又換回去，也得從乾淨狀態開始）。
-require_clean_git() {
-  cd "$REPO_ROOT"
-  if [ -n "$(git status --short)" ]; then
-    log_err "工作目錄有未提交的變更，請先處理（commit/stash）再跑這支腳本。"
-    git status --short
-    exit 1
-  fi
-}
-
 # 讀一個行程的 trip.conf，把裡面的變數塞進目前 shell
 # （PROFILE/PAGES_PROJECT/PROD_BRANCH/D1_NAME）。
 # shellcheck disable=SC1090
@@ -170,9 +159,7 @@ d1_applied_migrations() {
     | python3 -c "import json,sys; print('\n'.join(r['name'] for r in json.load(sys.stdin)[0]['results']))"
 }
 
-# 動正式環境 D1 前先備份（見 README「備份」）。獨立成一個函式，讓
-# run_pending_migrations 每次執行都無條件先跑一次，不依賴「有沒有偵測到
-# pending migration」這個判斷——就算判斷邏輯本身有 bug，備份還是會做。
+# 動正式環境 D1 前先備份（見 README「備份」）。
 d1_backup_remote() {
   local d1_name="$1" profile="$2"
   mkdir -p "$REPO_ROOT/backups"
@@ -183,11 +170,21 @@ d1_backup_remote() {
 # 依檔名順序套用 migrations/ 底下還沒套用過的檔案，套用完立刻記錄，一個檔案
 # 失敗就整個中止（fail loud），不要吃錯誤繼續跑下一個——schema 沒套完整
 # 部署繼續下去只會讓後面的同步撞更奇怪的錯。
+#
+# 備份前每次都詢問，不管有沒有偵測到 pending migration（判斷邏輯本身有 bug 的話
+# 才更需要有這道詢問兜底）；選擇不備份時 migration 照樣套用，不中止部署。
 run_pending_migrations() {
   local d1_name="$1" profile="$2"
   [ -d "$MIGRATIONS_DIR" ] || return 0
-  log_info "備份正式環境 D1（${d1_name}）……"
-  d1_backup_remote "$d1_name" "$profile"
+  local reply
+  printf '要先備份正式環境 D1（%s）嗎？[Y/n]： ' "$d1_name"
+  read -r reply
+  if [ -z "$reply" ] || [ "$reply" = "y" ] || [ "$reply" = "Y" ]; then
+    log_info "備份正式環境 D1（${d1_name}）……"
+    d1_backup_remote "$d1_name" "$profile"
+  else
+    log_warn "已略過備份，直接套用 migration。"
+  fi
   d1_ensure_migrations_table "$d1_name" "$profile"
   local applied
   applied="$(d1_applied_migrations "$d1_name" "$profile")"
