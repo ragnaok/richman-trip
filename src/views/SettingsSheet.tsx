@@ -24,6 +24,7 @@ import {
   sendTestPush,
 } from '../lib/push'
 import Toast, { useToast } from '../components/Toast'
+import ConfirmDialog from '../components/ConfirmDialog'
 import PhotoUpload from '../components/PhotoUpload'
 import { fileToSquareIconDataUrl } from '../lib/imageUpload'
 import { apiFetchJson, ApiError } from '../lib/api'
@@ -324,13 +325,14 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
   }
 
   return (
-    <div
-      className="settings-page"
-      style={{
-        transform: `translateX(${openX}px)`,
-        transition: dragging ? 'none' : 'transform 220ms ease-out',
-      }}
-    >
+    <>
+      <div
+        className="settings-page"
+        style={{
+          transform: `translateX(${openX}px)`,
+          transition: dragging ? 'none' : 'transform 220ms ease-out',
+        }}
+      >
       <div className="settings-header">
         <h2 className="settings-title">設定</h2>
         <button type="button" className="btn btn-ghost settings-close-btn" onClick={closeSettings} aria-label="關閉">
@@ -678,35 +680,6 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
           )}
           {syncBusy ? '同步中…' : '強制同步資料'}
         </button>
-        {syncConfirm && (
-          <div className="settings-date-warning">
-            <p>
-              會清空本機所有資料，完全以伺服器資料重新下載一次，此動作無法復原。
-              {syncConfirm.total > 0 ? (
-                <>
-                  {' '}
-                  本機還有 <b>{syncConfirm.total}</b> 筆尚未上傳的變更會被<b>捨棄</b>：
-                  {syncConfirm.byTable.map((t) => `${t.label} ${t.count} 筆`).join('、')}。
-                </>
-              ) : (
-                ' 目前沒有尚未上傳的變更。'
-              )}
-            </p>
-            <div className="settings-date-warning-row">
-              <button type="button" className="btn btn-secondary" onClick={cancelForceSync}>
-                取消
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary settings-date-danger-btn"
-                disabled={syncConfirmCountdown > 0}
-                onClick={confirmForceSync}
-              >
-                {syncConfirmCountdown > 0 ? `確定強制同步（${syncConfirmCountdown}）` : '確定強制同步'}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="settings-section">
@@ -727,6 +700,29 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
         )}
       </div>
       {toast && <Toast message={toast.message} />}
-    </div>
+      </div>
+      {syncConfirm && (
+        <ConfirmDialog
+          message={
+            <>
+              會清空本機所有資料，完全以伺服器資料重新下載一次，此動作無法復原。
+              {syncConfirm.total > 0 ? (
+                <>
+                  {' '}
+                  本機還有 <b>{syncConfirm.total}</b> 筆尚未上傳的變更會被<b>捨棄</b>：
+                  {syncConfirm.byTable.map((t) => `${t.label} ${t.count} 筆`).join('、')}。
+                </>
+              ) : (
+                ' 目前沒有尚未上傳的變更，可以安心執行。'
+              )}
+            </>
+          }
+          confirmLabel={syncConfirmCountdown > 0 ? `確定強制同步（${syncConfirmCountdown}）` : '確定強制同步'}
+          confirmDisabled={syncConfirmCountdown > 0}
+          onCancel={cancelForceSync}
+          onConfirm={confirmForceSync}
+        />
+      )}
+    </>
   )
 }
