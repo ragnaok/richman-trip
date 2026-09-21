@@ -302,7 +302,7 @@ export async function pullPublicSettings(): Promise<void> {
   } catch {
     return // 離線或伺服器錯誤：AuthGate 維持本機既有值，不擋畫面
   }
-  for (const r of data.settings) await upsertIfNewer('settings', rowToSetting(r), (x) => x.k)
+  for (const r of data.settings) await upsertIfNewer('settings', rowToSetting(r), (x) => x.k, true)
   await useStore.getState().hydrate()
 }
 
