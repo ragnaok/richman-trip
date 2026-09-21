@@ -29,7 +29,14 @@ confirm_yes() {
 }
 
 # 讀一個行程的 trip.conf，把裡面的變數塞進目前 shell
-# （PROFILE/PAGES_PROJECT/PROD_BRANCH/D1_NAME）。
+# （PROFILE/PAGES_PROJECT/PROD_BRANCH/D1_NAME，ACCOUNT_ID 是選填）。
+# 有 ACCOUNT_ID 就 export 成 CLOUDFLARE_ACCOUNT_ID：這個帳號的 OAuth session 如果
+# 同時能存取多個 Cloudflare account（例如受邀成為別人帳號的協作者），大部分
+# wrangler 指令在非互動模式下會直接失敗噴「More than one account available」，
+# 即使已經帶了 --profile 也一樣——--profile 只決定用哪組登入憑證，account 要另外
+# 指定。CLOUDFLARE_ACCOUNT_ID 是 wrangler 全域認的環境變數，設一次對這個 shell
+# 底下所有指令（d1/pages/…）都生效，不用每個指令再各自想辦法傳。單一帳號的
+# profile 不會遇到這個問題，ACCOUNT_ID 留空即可，wrangler 自己解得出來。
 # shellcheck disable=SC1090
 load_trip_conf() {
   local trip="$1"
@@ -41,6 +48,44 @@ load_trip_conf() {
   fi
   # shellcheck source=/dev/null
   source "$conf"
+  if [ -n "${ACCOUNT_ID:-}" ]; then
+    export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
+  fi
+}
+
+# 探測 profile 對應的 account_id。如果這個 profile 的 OAuth session 同時能存取
+# 多個 Cloudflare account，wrangler 在非互動模式下大部分指令會直接失敗、印出
+# 可選帳號清單——用一個無害的探測指令（wrangler d1 list，讀取用、不建立任何
+# 資源）觸發這個錯誤訊息，從裡面 parse 出清單：只有一個候選就直接用，沒有噴錯
+# 代表這個 profile 本來就只有一個帳號（回傳空字串，呼叫端不用設 ACCOUNT_ID），
+# 有多個候選則印出來讓使用者選。
+# 用法：ACCOUNT_ID="$(resolve_account_id "$PROFILE")"
+resolve_account_id() {
+  local profile="$1"
+  local output
+  if output="$(CLOUDFLARE_ACCOUNT_ID= npx wrangler d1 list --profile "$profile" 2>&1)"; then
+    echo ""
+    return 0
+  fi
+  if ! echo "$output" | grep -q "More than one account available"; then
+    log_err "探測 Cloudflare account 時發生非預期錯誤："
+    echo "$output" >&2
+    exit 1
+  fi
+  local accounts
+  accounts="$(echo "$output" | grep -oE '`[^`]+`: `[0-9a-f]{32}`')"
+  local count
+  count="$(echo "$accounts" | grep -c .)"
+  if [ "$count" -eq 1 ]; then
+    echo "$accounts" | grep -oE '[0-9a-f]{32}'
+    return 0
+  fi
+  log_warn "profile「${profile}」底下有多個 Cloudflare account，請選一個：" >&2
+  echo "$accounts" >&2
+  local chosen
+  printf '貼上要用的 account_id： ' >&2
+  read -r chosen
+  echo "$chosen"
 }
 
 # 找出跟給定 profile 共用同一個 Cloudflare 帳號、且不是 $exclude_trip 本身的既有行程，
