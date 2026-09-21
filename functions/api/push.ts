@@ -182,24 +182,36 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   const now = Date.now()
-  const statements = []
-  const candidates: Op[] = []
+  const prepared: Array<{ op: Op; stmt: D1PreparedStatement }> = []
   for (const op of ops) {
     const spec = TABLE_SPECS[op.table]
     if (!spec || !op.row) continue
     const sql = buildUpsertSql(op.table, spec)
-    statements.push(context.env.DB.prepare(sql).bind(...spec.bind(op.row, now)))
-    candidates.push(op)
+    prepared.push({ op, stmt: context.env.DB.prepare(sql).bind(...spec.bind(op.row, now)) })
   }
 
-  // 用 batch 結果的 meta.changes 判斷該筆 upsert 是否真的套用：LWW 輸掉時 changes=0，
-  // 代表伺服器已有更新版本，這筆不該被客戶端當成「已送達」清掉。
+  // 用結果的 meta.changes 判斷該筆 upsert 是否真的套用：LWW 輸掉時 changes=0，代表
+  // 伺服器已有更新版本，這筆不該被客戶端當成「已送達」清掉。
   const written: Op[] = []
-  if (statements.length > 0) {
-    const results = await context.env.DB.batch(statements)
-    results.forEach((res, i) => {
-      if ((res.meta?.changes ?? 0) > 0) written.push(candidates[i])
-    })
+  if (prepared.length > 0) {
+    try {
+      const results = await context.env.DB.batch(prepared.map((p) => p.stmt))
+      results.forEach((res, i) => {
+        if ((res.meta?.changes ?? 0) > 0) written.push(prepared[i].op)
+      })
+    } catch {
+      // batch 是單一交易：其中一筆資料格式有問題（例如 CHECK constraint）會讓整批
+      // 連帶失敗，其他明明正常的資料也跟著卡住、永遠重送不出去。退回逐筆執行，讓
+      // 壞掉的那一筆自己失敗留在客端佇列，其他正常的照樣寫得進去。
+      for (const { op, stmt } of prepared) {
+        try {
+          const res = await stmt.run()
+          if ((res.meta?.changes ?? 0) > 0) written.push(op)
+        } catch {
+          // 這筆真的寫不進去，不算 written，留在客端 outbox 繼續重試。
+        }
+      }
+    }
   }
 
   // 行程提醒即時同步，不用等 worker-cron 下一輪。reminders 仍是純衍生快取，

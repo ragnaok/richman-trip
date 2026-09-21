@@ -179,40 +179,112 @@ function rowToHotel(r: Record<string, unknown>): StoredHotel {
  * LWW upsert 一筆進 IndexedDB：只有伺服器版本較新（或本地沒有這筆）才覆蓋。
  * 還在 outbox 排隊的本地變更不必特別處理——它的 updated_at 是修改當下的時間，
  * 比較舊的伺服器列本來就蓋不過去。
+ *
+ * purgeTombstone=true 時，贏過本機的伺服器列若是墓碑（deleted=1）就直接把本機這筆
+ * 刪掉，不留著——反正已經確定同步過，本機沒必要繼續留著佔空間（尤其是帶照片的列）。
+ * cats 表要傳 false：deletedNames 靠本機保留的墓碑列擋掉 DEFAULT_MONEY_CATS 內建分類
+ * 重新冒出來（見 store.ts useCatNames），這張表的墓碑不能在本機被清掉。
  */
-async function upsertIfNewer<T extends { id?: unknown; kind?: unknown; k?: unknown; updated_at: number }>(
+async function upsertIfNewer<T extends { id?: unknown; kind?: unknown; k?: unknown; updated_at: number; deleted?: 0 | 1 }>(
   storeName: 'plans' | 'spots_meta' | 'pack_items' | 'expenses' | 'cats' | 'settings' | 'spots' | 'members' | 'hotels' | 'payment_methods',
   row: T,
   getKey: (row: T) => unknown,
+  purgeTombstone: boolean,
 ): Promise<void> {
   const dbInst = await db.getDB()
   const key = getKey(row) as never
   const existing = await dbInst.get(storeName, key)
-  if (!existing || (existing as { updated_at: number }).updated_at < row.updated_at) {
+  if (existing && (existing as { updated_at: number }).updated_at >= row.updated_at) return
+  if (purgeTombstone && row.deleted === 1) {
+    await dbInst.delete(storeName, key)
+  } else {
     await dbInst.put(storeName, row as never)
   }
+}
+
+async function pullSince(since: number): Promise<void> {
+  const data = await apiFetchJson<PullResponse>(`/api/pull?since=${since}`)
+
+  for (const r of data.plans) await upsertIfNewer('plans', rowToPlan(r), (x) => x.id, true)
+  for (const r of data.spots_meta) await upsertIfNewer('spots_meta', rowToSpotMeta(r), (x) => x.id, true)
+  for (const r of data.pack_items) await upsertIfNewer('pack_items', rowToPackItem(r), (x) => x.id, true)
+  for (const r of data.expenses) await upsertIfNewer('expenses', rowToExpense(r), (x) => x.id, true)
+  for (const r of data.cats) await upsertIfNewer('cats', rowToCat(r), (x) => [x.kind, x.name], false)
+  for (const r of data.settings) await upsertIfNewer('settings', rowToSetting(r), (x) => x.k, true)
+  for (const r of data.spots) await upsertIfNewer('spots', rowToSpot(r), (x) => x.id, true)
+  for (const r of data.members) await upsertIfNewer('members', rowToMember(r), (x) => x.role, true)
+  for (const r of data.hotels) await upsertIfNewer('hotels', rowToHotel(r), (x) => x.id, true)
+  for (const r of data.payment_methods) await upsertIfNewer('payment_methods', rowToPaymentMethod(r), (x) => x.name, true)
+
+  await db.setMeta('since', data.server_now)
+  await useStore.getState().hydrate()
 }
 
 export async function pull(): Promise<void> {
   if (!hasSession()) return
   const since = (await db.getMeta<number>('since')) ?? 0
-  let data: PullResponse
   try {
-    data = await apiFetchJson<PullResponse>(`/api/pull?since=${since}`)
+    await pullSince(since)
   } catch {
     return // 離線或伺服器錯誤：靜默放棄這一輪，下次觸發再試
   }
+}
 
-  for (const r of data.plans) await upsertIfNewer('plans', rowToPlan(r), (x) => x.id)
-  for (const r of data.spots_meta) await upsertIfNewer('spots_meta', rowToSpotMeta(r), (x) => x.id)
-  for (const r of data.pack_items) await upsertIfNewer('pack_items', rowToPackItem(r), (x) => x.id)
-  for (const r of data.expenses) await upsertIfNewer('expenses', rowToExpense(r), (x) => x.id)
-  for (const r of data.cats) await upsertIfNewer('cats', rowToCat(r), (x) => [x.kind, x.name])
-  for (const r of data.settings) await upsertIfNewer('settings', rowToSetting(r), (x) => x.k)
-  for (const r of data.spots) await upsertIfNewer('spots', rowToSpot(r), (x) => x.id)
-  for (const r of data.members) await upsertIfNewer('members', rowToMember(r), (x) => x.role)
-  for (const r of data.hotels) await upsertIfNewer('hotels', rowToHotel(r), (x) => x.id)
-  for (const r of data.payment_methods) await upsertIfNewer('payment_methods', rowToPaymentMethod(r), (x) => x.name)
+const FORCE_SYNC_TABLES = ['plans', 'spots_meta', 'pack_items', 'expenses', 'cats', 'settings', 'spots', 'members', 'hotels', 'payment_methods'] as const
+
+const TABLE_LABELS: Record<OutboxOp['table'], string> = {
+  plans: '行程',
+  spots_meta: '景點筆記',
+  pack_items: '行李',
+  expenses: '記帳',
+  cats: '分類',
+  settings: '設定',
+  spots: '自訂景點',
+  members: '身分',
+  hotels: '住宿',
+  payment_methods: '付款方式',
+}
+
+export interface PendingOutboxSummary {
+  total: number
+  byTable: Array<{ label: string; count: number }>
+}
+
+/** 按「強制同步資料」前要讓使用者知道會丟掉什麼：outbox 裡還沒送達伺服器的變更數，
+ * 依表分組方便顯示。 */
+export async function getPendingOutboxSummary(): Promise<PendingOutboxSummary> {
+  const outbox = await db.getOutbox()
+  const counts = new Map<OutboxOp['table'], number>()
+  for (const op of outbox) counts.set(op.table, (counts.get(op.table) ?? 0) + 1)
+  const byTable = [...counts.entries()].map(([table, count]) => ({ label: TABLE_LABELS[table], count }))
+  return { total: outbox.length, byTable }
+}
+
+/**
+ * 設定頁「強制同步資料」：完全以伺服器為準重建本機——跟 pull() 的 LWW merge 不同，
+ * 這裡不比較 updated_at（本機時鐘不可信、卡住的本地變更本來就是要被捨棄的對象），
+ * 清空 outbox 跟本機各表後，只放回伺服器目前有的、非墓碑的資料（墓碑本來就該被丟
+ * 掉，見 upsertIfNewer 的 purgeTombstone 註解；cats 例外，理由同上）。
+ * 呼叫前應該先用 getPendingOutboxSummary() 讓使用者確認要不要丟掉還沒上傳的變更。
+ * 跟 pull() 不同，錯誤丟給呼叫端處理，讓按鈕能顯示同步失敗。
+ */
+export async function forceSync(): Promise<void> {
+  if (!hasSession()) return
+  const data = await apiFetchJson<PullResponse>('/api/pull?since=0')
+
+  await db.clearOutbox()
+  for (const table of FORCE_SYNC_TABLES) await db.clearStore(table)
+
+  for (const r of data.plans) if (!toBool(r.deleted)) await db.putRow('plans', rowToPlan(r))
+  for (const r of data.spots_meta) if (!toBool(r.deleted)) await db.putRow('spots_meta', rowToSpotMeta(r))
+  for (const r of data.pack_items) if (!toBool(r.deleted)) await db.putRow('pack_items', rowToPackItem(r))
+  for (const r of data.expenses) if (!toBool(r.deleted)) await db.putRow('expenses', rowToExpense(r))
+  for (const r of data.cats) await db.putRow('cats', rowToCat(r))
+  for (const r of data.settings) await db.putRow('settings', rowToSetting(r))
+  for (const r of data.spots) if (!toBool(r.deleted)) await db.putRow('spots', rowToSpot(r))
+  for (const r of data.members) if (!toBool(r.deleted)) await db.putRow('members', rowToMember(r))
+  for (const r of data.hotels) if (!toBool(r.deleted)) await db.putRow('hotels', rowToHotel(r))
+  for (const r of data.payment_methods) if (!toBool(r.deleted)) await db.putRow('payment_methods', rowToPaymentMethod(r))
 
   await db.setMeta('since', data.server_now)
   await useStore.getState().hydrate()
@@ -230,7 +302,7 @@ export async function pullPublicSettings(): Promise<void> {
   } catch {
     return // 離線或伺服器錯誤：AuthGate 維持本機既有值，不擋畫面
   }
-  for (const r of data.settings) await upsertIfNewer('settings', rowToSetting(r), (x) => x.k)
+  for (const r of data.settings) await upsertIfNewer('settings', rowToSetting(r), (x) => x.k, true)
   await useStore.getState().hydrate()
 }
 

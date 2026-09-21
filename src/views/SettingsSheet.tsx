@@ -24,9 +24,11 @@ import {
   sendTestPush,
 } from '../lib/push'
 import Toast, { useToast } from '../components/Toast'
+import ConfirmDialog from '../components/ConfirmDialog'
 import PhotoUpload from '../components/PhotoUpload'
 import { fileToSquareIconDataUrl } from '../lib/imageUpload'
 import { apiFetchJson, ApiError } from '../lib/api'
+import { forceSync, getPendingOutboxSummary, type PendingOutboxSummary } from '../lib/sync'
 import type { StoredHotel } from '../lib/types'
 
 interface HotelDraft {
@@ -168,6 +170,41 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
     }
   }
 
+  // 強制同步是破壞性操作（清空本機重建，見 lib/sync.ts forceSync 註解），按下後先列出
+  // outbox 裡還沒上傳的變更數，確定按鈕還要倒數幾秒才能按，避免手滑誤觸。
+  const FORCE_SYNC_CONFIRM_SECONDS = 5
+  const [syncBusy, setSyncBusy] = useState(false)
+  const [syncConfirm, setSyncConfirm] = useState<PendingOutboxSummary | null>(null)
+  const [syncConfirmCountdown, setSyncConfirmCountdown] = useState(0)
+
+  useEffect(() => {
+    if (!syncConfirm || syncConfirmCountdown <= 0) return
+    const t = setTimeout(() => setSyncConfirmCountdown((s) => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [syncConfirm, syncConfirmCountdown])
+
+  async function handleOpenForceSyncConfirm() {
+    setSyncConfirm(await getPendingOutboxSummary())
+    setSyncConfirmCountdown(FORCE_SYNC_CONFIRM_SECONDS)
+  }
+
+  function cancelForceSync() {
+    setSyncConfirm(null)
+  }
+
+  async function confirmForceSync() {
+    setSyncConfirm(null)
+    setSyncBusy(true)
+    try {
+      await forceSync()
+      showToast('已同步最新資料')
+    } catch {
+      showToast('同步失敗，請檢查網路連線')
+    } finally {
+      setSyncBusy(false)
+    }
+  }
+
   async function handleTogglePush() {
     setPushBusy(true)
     setPushError(null)
@@ -288,13 +325,14 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
   }
 
   return (
-    <div
-      className="settings-page"
-      style={{
-        transform: `translateX(${openX}px)`,
-        transition: dragging ? 'none' : 'transform 220ms ease-out',
-      }}
-    >
+    <>
+      <div
+        className="settings-page"
+        style={{
+          transform: `translateX(${openX}px)`,
+          transition: dragging ? 'none' : 'transform 220ms ease-out',
+        }}
+      >
       <div className="settings-header">
         <h2 className="settings-title">設定</h2>
         <button type="button" className="btn btn-ghost settings-close-btn" onClick={closeSettings} aria-label="關閉">
@@ -628,6 +666,23 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
       </div>
 
       <div className="settings-section">
+        <div className="edit-section-label">資料同步</div>
+        <button
+          type="button"
+          className="btn btn-block btn-secondary settings-push-btn"
+          disabled={syncBusy}
+          onClick={handleOpenForceSyncConfirm}
+        >
+          {syncBusy ? (
+            <CircleNotch size={16} weight="bold" className="settings-rate-sync-spin" />
+          ) : (
+            <ArrowsClockwise size={16} weight="duotone" />
+          )}
+          {syncBusy ? '同步中…' : '強制同步資料'}
+        </button>
+      </div>
+
+      <div className="settings-section">
         <div className="edit-section-label">版本</div>
         <p className="settings-role-current">
           目前版本 {__GIT_TAG__ ? `${__GIT_TAG__}(${__GIT_HASH__})` : __GIT_HASH__}
@@ -645,6 +700,29 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
         )}
       </div>
       {toast && <Toast message={toast.message} />}
-    </div>
+      </div>
+      {syncConfirm && (
+        <ConfirmDialog
+          message={
+            <>
+              會清空本機所有資料，完全以伺服器資料重新下載一次，此動作無法復原。
+              {syncConfirm.total > 0 ? (
+                <>
+                  {' '}
+                  本機還有 <b>{syncConfirm.total}</b> 筆尚未上傳的變更會被<b>捨棄</b>：
+                  {syncConfirm.byTable.map((t) => `${t.label} ${t.count} 筆`).join('、')}。
+                </>
+              ) : (
+                ' 目前沒有尚未上傳的變更，可以安心執行。'
+              )}
+            </>
+          }
+          confirmLabel={syncConfirmCountdown > 0 ? `強制同步（${syncConfirmCountdown}）` : '強制同步'}
+          confirmDisabled={syncConfirmCountdown > 0}
+          onCancel={cancelForceSync}
+          onConfirm={confirmForceSync}
+        />
+      )}
+    </>
   )
 }

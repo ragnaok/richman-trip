@@ -1144,12 +1144,16 @@ body {
 
 /* 刪除二次確認的共用置中彈窗（跳出視窗）——不用 window.confirm，因為 PWA 加到主畫面／
    部分內嵌瀏覽器環境下原生對話框不會正常彈出，點刪除會完全沒反應（見 ConfirmDialog.tsx）。
-   各處刪除按鈕（記帳、分類管理、付款方式管理、行程、行李、景點）共用同一組樣式。
-   z-index 要蓋過 .edit-sheet 本身（30）跟疊在它上面的子面板（31、32），確保永遠疊最上層。 */
+   各處刪除按鈕（記帳、分類管理、付款方式管理、行程、行李、景點）共用同一組樣式；設定頁
+   「強制同步資料」也用它，但是當 .settings-page 的 sibling（不是內層子元素）——
+   .settings-page 本身會捲動，巢狀 position:absolute 的 inset:0 會相對整個可捲動內容
+   高度定位，捲到下面時彈窗會跑到畫面外，所以改成跟 .settings-page 同層。z-index 要蓋過
+   .edit-sheet 本身（30）跟疊在它上面的子面板（31、32），也要蓋過 .settings-page（50），
+   確保永遠疊最上層。 */
 .confirm-dialog-overlay {
   position: absolute;
   inset: 0;
-  z-index: 33;
+  z-index: 51;
   background: color-mix(in srgb, var(--color-neutral-900) 45%, transparent);
   display: flex;
   align-items: center;
