@@ -416,6 +416,35 @@ export default function MoneyTab() {
       <div className="money-detail-section">
         <div className="money-detail-header">
           <div className="money-section-kicker">明細</div>
+          <div className="money-sort-wrap">
+            <button type="button" className="btn btn-ghost" onClick={() => setSortMenuOpen(!sortMenuOpen)}>
+              {expSortDir === 'desc' ? <SortAscending size={14} weight="duotone" /> : <SortDescending size={14} weight="duotone" />}
+              排序：{SORT_LABEL[expSort]}
+            </button>
+            {sortMenuOpen && (
+              <>
+                <div className="money-filter-hint-backdrop" onClick={() => setSortMenuOpen(false)} />
+                <div className="money-sort-menu">
+                  {SORT_OPTIONS.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`money-sort-menu-item${expSort === key ? ' is-selected' : ''}`}
+                      onClick={() => pickExpSort(key)}
+                    >
+                      {SORT_LABEL[key]}
+                      {expSort === key &&
+                        (expSortDir === 'desc' ? (
+                          <SortAscending size={13} weight="duotone" className="money-sort-menu-icon" />
+                        ) : (
+                          <SortDescending size={13} weight="duotone" className="money-sort-menu-icon" />
+                        ))}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button type="button" className="btn btn-ghost" onClick={() => openCatMgr('money')}>
             <SlidersHorizontal size={13} weight="duotone" /> 管理分類
           </button>
@@ -429,36 +458,6 @@ export default function MoneyTab() {
             onChange={(e) => setExpSearch(e.target.value)}
             placeholder="搜尋明細項目"
           />
-        </div>
-
-        <div className="money-sort-row">
-          <button type="button" className="btn btn-ghost" onClick={() => setSortMenuOpen(!sortMenuOpen)}>
-            {expSortDir === 'desc' ? <SortDescending size={14} weight="duotone" /> : <SortAscending size={14} weight="duotone" />}
-            排序：{SORT_LABEL[expSort]}
-          </button>
-          {sortMenuOpen && (
-            <>
-              <div className="money-filter-hint-backdrop" onClick={() => setSortMenuOpen(false)} />
-              <div className="money-sort-menu">
-                {SORT_OPTIONS.map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    className={`money-sort-menu-item${expSort === key ? ' is-selected' : ''}`}
-                    onClick={() => pickExpSort(key)}
-                  >
-                    {SORT_LABEL[key]}
-                    {expSort === key &&
-                      (expSortDir === 'desc' ? (
-                        <SortDescending size={13} weight="duotone" className="money-sort-menu-icon" />
-                      ) : (
-                        <SortAscending size={13} weight="duotone" className="money-sort-menu-icon" />
-                      ))}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
         </div>
 
         {expFilter !== ALL_FILTER && (

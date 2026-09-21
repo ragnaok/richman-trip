@@ -2040,17 +2040,23 @@ body {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin-bottom: 4px;
 }
 
 .money-detail-header .money-section-kicker {
   flex: 1;
 }
 
+/* 排序／管理分類按鈕比照設計稿縮小成跟 kicker 同量級的尺寸——套用預設 .btn-ghost
+   （font-size:14px、padding 明顯比較大）會把整列撐高，明細標題跟搜尋框之間看起來
+   空得比設計稿多，不是搜尋框 margin-top 的問題。 */
+.money-detail-header .btn-ghost {
+  font-size: 11.5px;
+  padding: 3px 7px;
+}
+
 /* — 明細搜尋框 + 分類篩選標籤（取代舊的分類頁籤，見 MoneyTab 開頭註解） — */
 .money-search-row {
   position: relative;
-  margin-top: 10px;
 }
 
 .money-search-icon {
@@ -2066,17 +2072,14 @@ body {
   font-size: 13px;
 }
 
-.money-sort-row {
+.money-sort-wrap {
   position: relative;
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 10px;
 }
 
 .money-sort-menu {
   position: absolute;
   top: 100%;
-  right: 0;
+  left: 0;
   margin-top: 4px;
   background: var(--color-bg);
   border: 1px solid var(--color-divider);
