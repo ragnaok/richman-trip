@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # 部署一趟已經設定過的行程（local-trips/<trip>/trip.conf 已存在）。
-# 流程：確保在最新 main → typecheck/lint/build → 換入該行程的素材（wrangler.toml、
+# 流程：typecheck/lint/build → 換入該行程的素材（wrangler.toml、
 # hero-photo、index.html 標題）→ 套用還沒套用過的 D1 migration（見 migrations/README.md）
 # → 部署 → 換回範本內容 → 確認落在 Production。
 # favicon／PWA icon 不在這裡處理，那兩個是設定頁上傳、存 D1、動態 Function 吐出來。
+#
+# 刻意不做 git checkout main／git pull，也不擋工作目錄有沒有未 commit 的變更——
+# 直接以當前進度（不管在哪個分支、有沒有 commit）部署，方便部署還沒推上去的改動。
 #
 # 用法：scripts/trip-cli/deploy-trip.sh <trip-slug>
 set -euo pipefail
@@ -19,16 +22,8 @@ if [ -z "$TRIP" ]; then
 fi
 
 cd "$REPO_ROOT"
-require_clean_git
 load_trip_conf "$TRIP"
 log_info "行程設定：PROFILE=$PROFILE PAGES_PROJECT=$PAGES_PROJECT PROD_BRANCH=$PROD_BRANCH D1_NAME=$D1_NAME"
-
-log_info "更新本機 main（單一分支模式，不用 rebase）……"
-git checkout main
-if ! git pull --ff-only; then
-  log_err "git pull 失敗（可能離線，或本機 main 跟遠端分岔了），手動處理後再重跑。"
-  exit 1
-fi
 
 log_info "型別檢查／lint……"
 npx tsc -b
