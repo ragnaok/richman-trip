@@ -717,7 +717,7 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
               )}
             </>
           }
-          confirmLabel={syncConfirmCountdown > 0 ? `確定強制同步（${syncConfirmCountdown}）` : '確定強制同步'}
+          confirmLabel={syncConfirmCountdown > 0 ? `強制同步（${syncConfirmCountdown}）` : '強制同步'}
           confirmDisabled={syncConfirmCountdown > 0}
           onCancel={cancelForceSync}
           onConfirm={confirmForceSync}
