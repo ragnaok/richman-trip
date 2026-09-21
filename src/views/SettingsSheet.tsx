@@ -630,7 +630,7 @@ export default function SettingsSheet({ openX, dragging }: { openX: number; drag
       <div className="settings-section">
         <div className="edit-section-label">版本</div>
         <p className="settings-role-current">
-          目前版本 {__GIT_HASH__}
+          目前版本 {__GIT_TAG__ ? `${__GIT_TAG__}(${__GIT_HASH__})` : __GIT_HASH__}
           {hasUpdate && <span className="settings-version-badge">有新版本</span>}
         </p>
         {hasUpdate && (
