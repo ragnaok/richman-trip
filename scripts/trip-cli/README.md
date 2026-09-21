@@ -12,6 +12,11 @@ scripts/trip-cli/new-trip.sh <trip-slug>
 
 # 之後每次要部署這趟行程（typecheck/lint → 換入行程素材 → build → 部署 → 換回 → 驗證落在 Production）
 scripts/trip-cli/deploy-trip.sh <trip-slug>
+
+# worker-cron/ 底下有改動時單獨部署（提醒邏輯、清墓碑排程等；只改 src/ 或
+# functions/ 不需要跑這支）。<trip-slug> 只是用來查出 Cloudflare profile——
+# worker-cron 是帳號層級共用的一支 Worker，會套用到該 profile 底下全部行程。
+scripts/trip-cli/deploy-worker-cron.sh <trip-slug>
 ```
 
 `<trip-slug>` 只能用小寫英數字與連字號，會拿去當 D1 名稱、Pages 專案名
@@ -61,6 +66,12 @@ favicon／PWA icon（加到主畫面用的圖示）**不在這裡**——那兩�
 換進根目錄 → `npm run build` → `wrangler pages deploy` → 換回範本內容（無論
 成功失敗都會換回，見 `lib.sh` 的 `apply_local_trip`/`restore_local_trip` 與
 `trap`）→ 確認最新一筆部署落在 Production。
+
+`deploy-worker-cron.sh`：讀 `<trip-slug>` 的 `trip.conf` 查出 `PROFILE` →
+`tsc --noEmit`／`oxlint`（只檢查 `worker-cron/src`）→ `wrangler deploy
+--profile $PROFILE`。不動 `local-trips/` 素材、不動 Pages，單純部署
+`worker-cron/` 目前的內容；因為是帳號層級共用的 Worker，部署對該 profile 底下
+所有行程都生效，不是只有 `<trip-slug>` 這一趟。
 
 ## 判斷「這個帳號是不是已經有其他行程」
 
