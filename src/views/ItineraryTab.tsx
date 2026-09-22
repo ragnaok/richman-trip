@@ -87,20 +87,60 @@ export default function ItineraryTab() {
   const dragPointerRef = useRef<{ id: PlanItem['id']; pointerId: number } | null>(null)
   const plansListRef = useRef<HTMLDivElement>(null)
 
-  function handleDragStart(e: ReactPointerEvent<HTMLSpanElement>, id: PlanItem['id']) {
-    e.stopPropagation()
-    e.preventDefault()
-    e.currentTarget.setPointerCapture(e.pointerId)
-    dragPointerRef.current = { id, pointerId: e.pointerId }
+  // 長按 1 秒才真的進入拖曳模式，不然手指從把手上滑過想捲動頁面，會被誤判成拖曳
+  // （把手就卡在行程列表中間，手勢起點很容易剛好壓到）。pointerdown 當下只記錄
+  // 起點、開一個 1 秒計時器，這段「等待期」故意不 preventDefault、不設 touch-action:
+  // none，讓瀏覽器原生捲動可以正常接手；等待期間手指移動超過門檻就視為使用者在
+  // 滑頁面，取消計時器、什麼都不做。計時器真的到點了才呼叫 armDrag 進入原本的拖曳
+  // 邏輯，並從這之後才 preventDefault 擋掉原生捲動。
+  const LONG_PRESS_MS = 1000
+  const MOVE_CANCEL_PX = 10
+  const pendingRef = useRef<{
+    id: PlanItem['id']
+    pointerId: number
+    startX: number
+    startY: number
+    target: HTMLSpanElement
+    timer: ReturnType<typeof setTimeout>
+  } | null>(null)
+
+  useEffect(() => () => clearTimeout(pendingRef.current?.timer), [])
+
+  function armDrag(id: PlanItem['id'], pointerId: number, startY: number, target: HTMLSpanElement) {
+    pendingRef.current = null
+    dragPointerRef.current = { id, pointerId }
     const idx = dayPlans.findIndex((p) => p.id === id)
-    const rowHeight = e.currentTarget.parentElement?.getBoundingClientRect().height ?? 0
-    setDrag({ id, fromIndex: idx, overIndex: idx, rowHeight, startY: e.clientY, deltaY: 0 })
+    const rowHeight = target.parentElement?.getBoundingClientRect().height ?? 0
+    setDrag({ id, fromIndex: idx, overIndex: idx, rowHeight, startY, deltaY: 0 })
+  }
+
+  function handlePointerDown(e: ReactPointerEvent<HTMLSpanElement>, id: PlanItem['id']) {
+    e.stopPropagation()
+    // 立刻 capture 只是為了不管手指之後滑到哪裡，move/up 事件都還是會送到這個把手
+    // 上，方便我們自己判斷「有沒有超過移動門檻」；capture 本身不影響原生捲動手勢
+    // （那個由 touch-action 決定），這裡也還沒 preventDefault，捲動仍然正常運作。
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const target = e.currentTarget
+    const { pointerId, clientX: startX, clientY: startY } = e
+    const timer = setTimeout(() => armDrag(id, pointerId, startY, target), LONG_PRESS_MS)
+    pendingRef.current = { id, pointerId, startX, startY, target, timer }
   }
 
   function handleDragMove(e: ReactPointerEvent<HTMLSpanElement>) {
+    const pending = pendingRef.current
+    if (pending && pending.pointerId === e.pointerId) {
+      const dx = e.clientX - pending.startX
+      const dy = e.clientY - pending.startY
+      if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
+        clearTimeout(pending.timer)
+        pendingRef.current = null
+      }
+      return
+    }
     const dragging = dragPointerRef.current
     const list = plansListRef.current
     if (!dragging || dragging.pointerId !== e.pointerId || !list) return
+    e.preventDefault()
     const rows = Array.from(list.querySelectorAll<HTMLElement>('.itin-plan-row'))
     let overIndex = rows.length
     for (let i = 0; i < rows.length; i++) {
@@ -118,6 +158,14 @@ export default function ItineraryTab() {
   }
 
   function handleDragEnd(e: ReactPointerEvent<HTMLSpanElement>) {
+    const pending = pendingRef.current
+    if (pending && pending.pointerId === e.pointerId) {
+      // 長按門檻還沒到就放開了：純粹一次點擊或太快的滑動，根本沒進入拖曳模式，
+      // 不用做任何事（沒 preventDefault 過，原生行為——含可能的捲動——照常發生）。
+      clearTimeout(pending.timer)
+      pendingRef.current = null
+      return
+    }
     const dragging = dragPointerRef.current
     if (!dragging || dragging.pointerId !== e.pointerId) return
     dragPointerRef.current = null
@@ -309,7 +357,7 @@ export default function ItineraryTab() {
                 <span
                   className="itin-plan-drag-handle"
                   onClick={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => handleDragStart(e, p.id)}
+                  onPointerDown={(e) => handlePointerDown(e, p.id)}
                   onPointerMove={handleDragMove}
                   onPointerUp={handleDragEnd}
                   onPointerCancel={handleDragEnd}

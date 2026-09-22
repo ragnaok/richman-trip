@@ -461,12 +461,13 @@ body {
   -webkit-user-select: none;
 }
 
-/* 未定行程的拖曳把手：取代時間欄位。touch-action:none 讓手機上長按拖曳不會被系統
-   當成捲動手勢搶走；user-select/-webkit-touch-callout 關掉文字選取與 iOS 長按跳出的
-   複製選單，不然長按會變成選取把手旁邊的文字，而不是觸發 pointerdown 拖曳。
-   -webkit-tap-highlight-color:transparent 才是黑色方塊的真正解法：那其實是 iOS
-   預設的按鈕點擊反白，全部按鈕都有，只是一般點一下太快閃一下看不出來，長按拖曳
-   因為手指按著不放，反白框會一直顯示著（之前猜合成層/原生手勢都是繞錯路）。 */
+/* 未定行程的拖曳把手：取代時間欄位。touch-action:pan-y——不是 none——讓手指從把手上
+   滑過想捲動頁面時，原生捲動照常接手；要真的長按 1 秒（見 ItineraryTab.tsx 的
+   LONG_PRESS_MS）才會被 JS 判定成拖曳，這之後才會 preventDefault 擋掉捲動。
+   user-select/-webkit-touch-callout 關掉文字選取與 iOS 長按跳出的複製選單，不然
+   長按會變成選取把手旁邊的文字。-webkit-tap-highlight-color:transparent 關掉 iOS
+   預設的按鈕點擊反白——全部按鈕都有，一般點一下太快閃一下看不出來，長按因為手指
+   按著不放，反白框會一直顯示著，不關掉在長按拖曳時會看到一塊黑色方塊。 */
 .itin-plan-drag-handle {
   flex: none;
   width: 48px;
@@ -475,7 +476,7 @@ body {
   justify-content: center;
   color: color-mix(in srgb, var(--color-text) 45%, transparent);
   cursor: grab;
-  touch-action: none;
+  touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
