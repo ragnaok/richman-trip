@@ -478,11 +478,10 @@ body {
   -webkit-touch-callout: none;
 }
 
-.itin-plan-dropline {
-  height: 2px;
-  margin: -1px 0;
-  background: var(--color-accent);
-  border-radius: 1px;
+/* 讓開空間時的位移要有轉場，才看得出「東西在移動」；拖曳中的那一列本身不要轉場
+   （見上），不然會跟手指的即時位置脫節，變成延遲跟手的黏滯感。 */
+.itin-plan-row:not(.is-dragging) {
+  transition: transform 0.15s ease-out;
 }
 
 .itin-plan-icon {

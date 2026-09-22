@@ -70,13 +70,20 @@ export default function ItineraryTab() {
   )
 
   // 未定行程（t === NA）拖曳排序：手刻 pointer events，不用 HTML5 draggable——
-  // 那組 API 在手機觸控上不會觸發，這支 App 只跑手機。drag 記兩件事：overIndex（插入
-  // 位置，對齊 dayPlans 的 index 空間，放開時才真的算新 order 並寫回）跟 deltaY（手指
-  // 移動的距離，直接拿來 translateY 讓被拖的列跟著手指走，不然只有一條插入線在動，
-  // 使用者會覺得「東西沒有真的被拿起來」，回饋感很低）。
-  const [drag, setDrag] = useState<{ id: PlanItem['id']; overIndex: number; startY: number; deltaY: number } | null>(
-    null,
-  )
+  // 那組 API 在手機觸控上不會觸發，這支 App 只跑手機。drag 記幾件事：fromIndex（拖曳
+  // 開始時的原始位置，固定不變，用來判斷哪些列該讓開）、overIndex（插入位置，對齊
+  // dayPlans 的 index 空間，放開時才真的算新 order 並寫回）、rowHeight（拖曳開始時量
+  // 到的列高，讓開的列要位移這個距離）、deltaY（手指移動的距離，直接拿來 translateY
+  // 讓被拖的列跟著手指走，不然只有一條插入線在動，使用者會覺得「東西沒有真的被拿
+  // 起來」，回饋感很低）。
+  const [drag, setDrag] = useState<{
+    id: PlanItem['id']
+    fromIndex: number
+    overIndex: number
+    rowHeight: number
+    startY: number
+    deltaY: number
+  } | null>(null)
   const dragPointerRef = useRef<{ id: PlanItem['id']; pointerId: number } | null>(null)
   const plansListRef = useRef<HTMLDivElement>(null)
 
@@ -86,7 +93,8 @@ export default function ItineraryTab() {
     e.currentTarget.setPointerCapture(e.pointerId)
     dragPointerRef.current = { id, pointerId: e.pointerId }
     const idx = dayPlans.findIndex((p) => p.id === id)
-    setDrag({ id, overIndex: idx, startY: e.clientY, deltaY: 0 })
+    const rowHeight = e.currentTarget.parentElement?.getBoundingClientRect().height ?? 0
+    setDrag({ id, fromIndex: idx, overIndex: idx, rowHeight, startY: e.clientY, deltaY: 0 })
   }
 
   function handleDragMove(e: ReactPointerEvent<HTMLSpanElement>) {
@@ -113,6 +121,18 @@ export default function ItineraryTab() {
     const dragging = dragPointerRef.current
     if (!dragging || dragging.pointerId !== e.pointerId) return
     dragPointerRef.current = null
+    // 手指放開的地方這時候多半已經不是把手，而是別筆行程的列（拖曳中手指移動到
+    // 那邊去了）；瀏覽器會在 pointerup 後補一個 click 事件，目標是放開當下那個元素，
+    // 不是把手，所以把手自己的 onClick stopPropagation 攔不到，會被當成「點開那筆
+    // 行程」誤觸開詳情頁（iPhone 13 mini 實測會發生）。這裡直接把下一個 click 事件
+    // 整個吃掉；400ms 內沒等到就自動解除，避免萬一沒有補 click 時卡住之後真正的點擊。
+    const swallow = (ev: Event) => {
+      ev.stopPropagation()
+      ev.preventDefault()
+    }
+    document.addEventListener('click', swallow, { capture: true, once: true })
+    setTimeout(() => document.removeEventListener('click', swallow, { capture: true }), 400)
+
     const finished = drag
     setDrag(null)
     if (!finished) return
@@ -258,54 +278,66 @@ export default function ItineraryTab() {
           const [icon, color] = KIND[p.k]
           const Icon = phosphorIcon(icon)
           const untimed = p.t === NA
+          const isDragged = drag?.id === p.id
+          // 佔位高度跟著拖曳位置移動：被拖的列自己用 translateY 跟手指走（見上），
+          // 其餘列依「會不會被插入點跨過」讓開一個 rowHeight 的空間，體感才像有
+          // 真的空間在移動，不是只有一條線在動。
+          let shift = 0
+          if (drag && !isDragged) {
+            if (drag.fromIndex < drag.overIndex && i > drag.fromIndex && i < drag.overIndex) shift = -drag.rowHeight
+            else if (drag.overIndex <= drag.fromIndex && i >= drag.overIndex && i < drag.fromIndex) shift = drag.rowHeight
+          }
           return (
-            <div key={p.id}>
-              {drag && drag.overIndex === i && drag.id !== p.id && <div className="itin-plan-dropline" />}
-              <div
-                className={`itin-plan-row${drag?.id === p.id ? ' is-dragging' : ''}`}
-                style={drag?.id === p.id ? { transform: `translateY(${drag.deltaY}px) scale(1.03)` } : undefined}
-                role="button"
-                tabIndex={0}
-                onClick={() => openDetail(day, p.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') openDetail(day, p.id)
-                }}
-              >
-                {untimed ? (
-                  <span
-                    className="itin-plan-drag-handle"
-                    onClick={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => handleDragStart(e, p.id)}
-                    onPointerMove={handleDragMove}
-                    onPointerUp={handleDragEnd}
-                    onPointerCancel={handleDragEnd}
-                  >
-                    <DotsSixVertical size={16} weight="bold" />
-                  </span>
-                ) : (
-                  <div className="itin-plan-time">{p.t}</div>
-                )}
-                {Icon && <Icon size={19} weight="duotone" color={color} className="itin-plan-icon" />}
-                <div className="itin-plan-body">
-                  <div className="itin-plan-title-row">
-                    <span className="itin-plan-title">{p.title}</span>
-                    {p.notify && <BellRinging size={13} weight="duotone" color="var(--color-accent-700)" />}
-                  </div>
-                  {p.sub && <div className="itin-plan-sub">{linkifyText(p.sub)}</div>}
-                  {(p.drive || p.park) && (
-                    <div className="itin-plan-drive">
-                      {p.drive && `車程 ${p.drive}`}
-                      {p.drive && p.park && ' · '}
-                      {p.park && `停車 ${p.park}`}
-                    </div>
-                  )}
+            <div
+              key={p.id}
+              className={`itin-plan-row${isDragged ? ' is-dragging' : ''}`}
+              style={
+                isDragged && drag
+                  ? { transform: `translateY(${drag.deltaY}px) scale(1.03)` }
+                  : shift !== 0
+                    ? { transform: `translateY(${shift}px)` }
+                    : undefined
+              }
+              role="button"
+              tabIndex={0}
+              onClick={() => openDetail(day, p.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') openDetail(day, p.id)
+              }}
+            >
+              {untimed ? (
+                <span
+                  className="itin-plan-drag-handle"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => handleDragStart(e, p.id)}
+                  onPointerMove={handleDragMove}
+                  onPointerUp={handleDragEnd}
+                  onPointerCancel={handleDragEnd}
+                >
+                  <DotsSixVertical size={16} weight="bold" />
+                </span>
+              ) : (
+                <div className="itin-plan-time">{p.t}</div>
+              )}
+              {Icon && <Icon size={19} weight="duotone" color={color} className="itin-plan-icon" />}
+              <div className="itin-plan-body">
+                <div className="itin-plan-title-row">
+                  <span className="itin-plan-title">{p.title}</span>
+                  {p.notify && <BellRinging size={13} weight="duotone" color="var(--color-accent-700)" />}
                 </div>
-                <CaretRight size={14} weight="bold" className="itin-plan-caret" />
+                {p.sub && <div className="itin-plan-sub">{linkifyText(p.sub)}</div>}
+                {(p.drive || p.park) && (
+                  <div className="itin-plan-drive">
+                    {p.drive && `車程 ${p.drive}`}
+                    {p.drive && p.park && ' · '}
+                    {p.park && `停車 ${p.park}`}
+                  </div>
+                )}
               </div>
+              <CaretRight size={14} weight="bold" className="itin-plan-caret" />
             </div>
           )
         })}
-        {drag && drag.overIndex === dayPlans.length && <div className="itin-plan-dropline" />}
       </div>
 
       <button type="button" className="btn btn-secondary btn-block itin-add" onClick={handleAddPlan}>
