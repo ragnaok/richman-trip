@@ -463,7 +463,10 @@ body {
 
 /* 未定行程的拖曳把手：取代時間欄位。touch-action:none 讓手機上長按拖曳不會被系統
    當成捲動手勢搶走；user-select/-webkit-touch-callout 關掉文字選取與 iOS 長按跳出的
-   複製選單，不然長按會變成選取把手旁邊的文字，而不是觸發 pointerdown 拖曳。 */
+   複製選單，不然長按會變成選取把手旁邊的文字，而不是觸發 pointerdown 拖曳。
+   -webkit-tap-highlight-color:transparent 才是黑色方塊的真正解法：那其實是 iOS
+   預設的按鈕點擊反白，全部按鈕都有，只是一般點一下太快閃一下看不出來，長按拖曳
+   因為手指按著不放，反白框會一直顯示著（之前猜合成層/原生手勢都是繞錯路）。 */
 .itin-plan-drag-handle {
   flex: none;
   width: 48px;
@@ -476,6 +479,7 @@ body {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* 讓開空間時的位移要有轉場，才看得出「東西在移動」；拖曳中的那一列本身不要轉場
