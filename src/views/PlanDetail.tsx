@@ -60,7 +60,7 @@ export default function PlanDetail({
   const sameDayPlans = sortPlans(plans.filter((p) => p.day === plan.day && p.deleted !== 1))
 
   const handleSelectCandidate = (candSpot: NonNullable<ReturnType<typeof findSpot>>) => {
-    const { cands: _cands, updated_at: _updatedAt, deleted: _deleted, ...rest } = plan
+    const { cands: _cands, updated_at: _updatedAt, deleted: _deleted, order: _order, ...rest } = plan
     upsertPlan({
       ...rest,
       title: candSpot.name,

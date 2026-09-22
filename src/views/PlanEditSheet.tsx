@@ -138,7 +138,7 @@ export default function PlanEditSheet() {
       window.alert(`這個日期不在設定的旅遊日期範圍內（${tripStart} ~ ${tripEnd}），請重新選擇。`)
       return
     }
-    const row: Omit<PlanItem, 'updated_at' | 'deleted'> = {
+    const row: Omit<PlanItem, 'updated_at' | 'deleted' | 'order'> = {
       id: draft.id,
       day,
       t: timeIsNA ? NA : t.trim(),

@@ -48,11 +48,11 @@ interface TableSpec {
 
 const TABLE_SPECS: Record<string, TableSpec> = {
   plans: {
-    columns: ['id', 'day', 't', 'title', 'sub', 'kind', 'q', 'spot', 'cands', 'drive', 'park', 'notify', 'lead', 'remind_at', 'photo', 'updated_at', 'deleted'],
+    columns: ['id', 'day', 't', 'sort_order', 'title', 'sub', 'kind', 'q', 'spot', 'cands', 'drive', 'park', 'notify', 'lead', 'remind_at', 'photo', 'updated_at', 'deleted'],
     conflictKeys: ['id'],
     hasDeleted: true,
     bind: (r, now) => [
-      str(r.id), str(r.day), str(r.t), str(r.title), str(r.sub) ?? '', str(r.k ?? r.kind),
+      str(r.id), str(r.day), str(r.t), num(r.order ?? r.sort_order, 0), str(r.title), str(r.sub) ?? '', str(r.k ?? r.kind),
       str(r.q) ?? '', str(r.spot), r.cands != null ? JSON.stringify(r.cands) : null,
       str(r.drive), str(r.park), toInt01(r.notify), num(r.lead, 30), str(r.remindAt ?? r.remind_at), str(r.photo),
       now, toInt01(r.deleted),

@@ -11,9 +11,21 @@ export function tkey(t: string): string {
   return `${h.padStart(2, '0')}:${mm.padStart(2, '0')}`
 }
 
-/** 依 tkey 用 localeCompare 排序，未定時間排最後；穩定排序（不改動原陣列）。 */
-export function sortPlans<T extends Pick<PlanItem, 't'>>(plans: T[]): T[] {
-  return [...plans].sort((a, b) => tkey(a.t).localeCompare(tkey(b.t)))
+/** 'H:MM'/'HH:MM' → 當天分鐘數（0–1439）；未定時間（或其他不合法格式）回 undefined。 */
+export function timeToMinutes(t: string): number | undefined {
+  const m = TIME_RE.exec(t)
+  if (!m) return undefined
+  const [, h, mm] = m
+  return Number(h) * 60 + Number(mm)
+}
+
+/**
+ * 依 PlanItem.order 排序；穩定排序（不改動原陣列）。
+ * order 由 store.ts upsertPlan 統一維護：有時間的項目＝分鐘數（自動跟著時間排），
+ * 未定項目＝拖曳決定的浮點數，兩者共用同一個鍵所以能穿插在同一份清單裡。
+ */
+export function sortPlans<T extends Pick<PlanItem, 'order'>>(plans: T[]): T[] {
+  return [...plans].sort((a, b) => a.order - b.order)
 }
 
 const WD_NAMES = ['週日', '週一', '週二', '週三', '週四', '週五', '週六']

@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { create } from 'zustand'
 import * as db from './db'
 import { DAYINFO, SPOTS, CAT_ICON } from '../data/spots'
-import { sortPlans, defaultDay, dayRange as computeDayRange } from './time'
+import { sortPlans, timeToMinutes, defaultDay, dayRange as computeDayRange } from './time'
 import type { PlanItem, PackItem, Expense, Cat, SpotMeta, Payer, CustomSpot, Spot, Member, StoredHotel, PaymentMethod } from './types'
 import type { OutboxOp } from './db'
 
@@ -99,7 +99,8 @@ interface Store {
   closeSettings: () => void
 
   // entities CRUD（write-through IndexedDB）
-  upsertPlan: (plan: Omit<PlanItem, 'updated_at' | 'deleted'>) => void
+  upsertPlan: (plan: Omit<PlanItem, 'updated_at' | 'deleted' | 'order'>) => void
+  reorderPlan: (id: PlanItem['id'], order: number) => void
   deletePlan: (id: PlanItem['id']) => void
   deletePlansForDay: (day: string) => void
   upsertPackItem: (item: Omit<PackItem, 'updated_at' | 'deleted'>) => void
@@ -131,6 +132,12 @@ function upsertById<T extends { id: unknown }>(list: T[], row: T): T[] {
   const next = [...list]
   next[idx] = row
   return next
+}
+
+function maxOrderForDay(plans: PlanItem[], day: string): number {
+  return plans
+    .filter((p) => p.day === day && p.deleted !== 1)
+    .reduce((max, p) => Math.max(max, Number.isFinite(p.order) ? p.order : 0), 0)
 }
 
 function upsertCatRow(list: Cat[], row: Cat): Cat[] {
@@ -190,7 +197,7 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async hydrate() {
-    const [plans, packItems, expenses, cats, settingsRows, spotsMetaRows, customSpots, members, hotels, paymentMethods] =
+    const [plansRaw, packItems, expenses, cats, settingsRows, spotsMetaRows, customSpots, members, hotels, paymentMethods] =
       await Promise.all([
         db.getAll('plans'),
         db.getAll('pack_items'),
@@ -203,6 +210,18 @@ export const useStore = create<Store>((set, get) => ({
         db.getAll('hotels'),
         db.getAll('payment_methods'),
       ])
+
+    // order 是這次拖曳排序功能才加的欄位；裝置上舊版同步下來、updated_at 沒再變過的
+    // 舊列不會因為只是幫欄位補值的 D1 migration 而被重新 pull 下來（LWW 只看
+    // updated_at），本機 IndexedDB 裡會停留在沒有 order 的狀態。這裡在讀出來時補一個
+    // 跟 D1 migration 同規則的預設值（有時間＝分鐘數，未定＝排最後），只寫回本機
+    // IndexedDB 讓排序穩定，不 enqueue／push——這不是使用者操作，不該產生新的同步事件。
+    const plans = plansRaw.map((p) => {
+      if (Number.isFinite(p.order)) return p
+      const fixed: PlanItem = { ...p, order: timeToMinutes(p.t) ?? 1440 }
+      void db.putRow('plans', fixed)
+      return fixed
+    })
 
     const settings: Record<string, string> = { rate: '0.216' }
     for (const row of settingsRows) settings[row.k] = row.v
@@ -265,10 +284,36 @@ export const useStore = create<Store>((set, get) => ({
   closeSettings: () => set((state) => ({ ui: { ...state.ui, settingsOpen: false } })),
 
   upsertPlan: (plan) => {
-    const row: PlanItem = { ...plan, updated_at: Date.now(), deleted: 0 }
+    const existing = get().entities.plans.find((p) => p.id === plan.id)
+    const minutes = timeToMinutes(plan.t)
+    // order 規則（見 CLAUDE.md 行程排序討論）：有時間的項目＝分鐘數，永遠跟著時間走；
+    // 未定項目若原本就有排好的順序（同一筆、t 沒變過）就保留，不要每次存檔都被打回
+    // 最後——那正是設計稿原型的 bug。新建的未定項目、或剛從有時間改成未定的項目，
+    // 沒有「使用者排過的順序」可沿用，預設排到當天最後。
+    const order =
+      minutes !== undefined
+        ? minutes
+        : existing && existing.t === plan.t
+          ? existing.order
+          : maxOrderForDay(get().entities.plans, plan.day) + 1
+    const row: PlanItem = { ...plan, order, updated_at: Date.now(), deleted: 0 }
     set((state) => {
       const merged = upsertById(state.entities.plans, row)
-      // 存檔後依時間升冪排序；只重排同一天的子集合，排序鍵只在同一天內有意義。
+      const sameDay = sortPlans(merged.filter((p) => p.day === row.day))
+      const otherDays = merged.filter((p) => p.day !== row.day)
+      return { entities: { ...state.entities, plans: [...otherDays, ...sameDay] } }
+    })
+    void db.putRow('plans', row)
+    void enqueue('plans', row)
+  },
+
+  // 拖曳未定項目放開時呼叫：只改 order，其餘欄位不動。
+  reorderPlan: (id, order) => {
+    const existing = get().entities.plans.find((p) => p.id === id)
+    if (!existing) return
+    const row: PlanItem = { ...existing, order, updated_at: Date.now() }
+    set((state) => {
+      const merged = upsertById(state.entities.plans, row)
       const sameDay = sortPlans(merged.filter((p) => p.day === row.day))
       const otherDays = merged.filter((p) => p.day !== row.day)
       return { entities: { ...state.entities, plans: [...otherDays, ...sameDay] } }

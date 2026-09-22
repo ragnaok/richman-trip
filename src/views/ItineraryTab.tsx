@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BellRinging, CaretRight, Bed } from '@phosphor-icons/react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
+import { BellRinging, CaretRight, Bed, DotsSixVertical } from '@phosphor-icons/react'
 import { useStore, useTripDayRange, useHotels } from '../lib/store'
+import type { PlanItem } from '../lib/types'
 import { sortPlans, tkey, formatMastheadDate, todayKey, mdToIso } from '../lib/time'
 import { navUrl } from '../lib/nav'
 import { linkifyText } from '../lib/linkify'
@@ -22,6 +24,7 @@ export default function ItineraryTab() {
   const openDetail = useStore((s) => s.openDetail)
   const setEdit = useStore((s) => s.setEdit)
   const plans = useStore((s) => s.entities.plans)
+  const reorderPlan = useStore((s) => s.reorderPlan)
 
   const { toast, showToast } = useToast()
 
@@ -65,6 +68,57 @@ export default function ItineraryTab() {
     () => sortPlans(plans.filter((p) => p.day === day && p.deleted !== 1)),
     [plans, day],
   )
+
+  // 未定行程（t === NA）拖曳排序：手刻 pointer events，不用 HTML5 draggable——
+  // 那組 API 在手機觸控上不會觸發，這支 App 只跑手機。drag 只記「插入位置」
+  // （overIndex，對齊 dayPlans 的 index 空間），放開時才真的算新 order 並寫回。
+  const [drag, setDrag] = useState<{ id: PlanItem['id']; overIndex: number } | null>(null)
+  const dragPointerRef = useRef<{ id: PlanItem['id']; pointerId: number } | null>(null)
+  const plansListRef = useRef<HTMLDivElement>(null)
+
+  function handleDragStart(e: ReactPointerEvent<HTMLSpanElement>, id: PlanItem['id']) {
+    e.stopPropagation()
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragPointerRef.current = { id, pointerId: e.pointerId }
+    const idx = dayPlans.findIndex((p) => p.id === id)
+    setDrag({ id, overIndex: idx })
+  }
+
+  function handleDragMove(e: ReactPointerEvent<HTMLSpanElement>) {
+    const dragging = dragPointerRef.current
+    const list = plansListRef.current
+    if (!dragging || dragging.pointerId !== e.pointerId || !list) return
+    const rows = Array.from(list.querySelectorAll<HTMLElement>('.itin-plan-row'))
+    let overIndex = rows.length
+    for (let i = 0; i < rows.length; i++) {
+      const rect = rows[i].getBoundingClientRect()
+      if (e.clientY < rect.top + rect.height / 2) {
+        overIndex = i
+        break
+      }
+    }
+    setDrag((d) => (d ? { ...d, overIndex } : d))
+  }
+
+  function handleDragEnd(e: ReactPointerEvent<HTMLSpanElement>) {
+    const dragging = dragPointerRef.current
+    if (!dragging || dragging.pointerId !== e.pointerId) return
+    dragPointerRef.current = null
+    const finished = drag
+    setDrag(null)
+    if (!finished) return
+    const fromIndex = dayPlans.findIndex((p) => p.id === finished.id)
+    if (fromIndex === -1) return
+    const rest = dayPlans.filter((p) => p.id !== finished.id)
+    // overIndex 是含自己在內的原始陣列位置；移除自己後，落在自己原位之後的
+    // 位置都要往前修正一格，才能對齊 rest 的 index 空間。
+    const insertAt = Math.max(0, Math.min(fromIndex < finished.overIndex ? finished.overIndex - 1 : finished.overIndex, rest.length))
+    const before = rest[insertAt - 1]
+    const after = rest[insertAt]
+    const newOrder = before && after ? (before.order + after.order) / 2 : before ? before.order + 1 : after ? after.order - 1 : 0
+    if (newOrder !== dayPlans[fromIndex].order) reorderPlan(finished.id, newOrder)
+  }
 
   // 「下一站」：今天用現在時間找第一筆還沒到的行程；其他天（過去／未來）維持顯示
   // 第一筆。今天但所有行程時間都過了 → nextPlan 是 undefined，顯示「今日行程已結束」
@@ -191,41 +245,58 @@ export default function ItineraryTab() {
         <span className="itin-day-header-hint">點一下可編輯</span>
       </div>
 
-      <div className="itin-plans">
-        {dayPlans.map((p) => {
+      <div className="itin-plans" ref={plansListRef}>
+        {dayPlans.map((p, i) => {
           const [icon, color] = KIND[p.k]
           const Icon = phosphorIcon(icon)
+          const untimed = p.t === NA
           return (
-            <div
-              key={p.id}
-              className="itin-plan-row"
-              role="button"
-              tabIndex={0}
-              onClick={() => openDetail(day, p.id)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') openDetail(day, p.id)
-              }}
-            >
-              <div className={`itin-plan-time${p.t === NA ? ' is-na' : ''}`}>{p.t}</div>
-              {Icon && <Icon size={19} weight="duotone" color={color} className="itin-plan-icon" />}
-              <div className="itin-plan-body">
-                <div className="itin-plan-title-row">
-                  <span className="itin-plan-title">{p.title}</span>
-                  {p.notify && <BellRinging size={13} weight="duotone" color="var(--color-accent-700)" />}
-                </div>
-                {p.sub && <div className="itin-plan-sub">{linkifyText(p.sub)}</div>}
-                {(p.drive || p.park) && (
-                  <div className="itin-plan-drive">
-                    {p.drive && `車程 ${p.drive}`}
-                    {p.drive && p.park && ' · '}
-                    {p.park && `停車 ${p.park}`}
-                  </div>
+            <div key={p.id}>
+              {drag && drag.overIndex === i && drag.id !== p.id && <div className="itin-plan-dropline" />}
+              <div
+                className={`itin-plan-row${drag?.id === p.id ? ' is-dragging' : ''}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => openDetail(day, p.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') openDetail(day, p.id)
+                }}
+              >
+                {untimed ? (
+                  <span
+                    className="itin-plan-drag-handle"
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => handleDragStart(e, p.id)}
+                    onPointerMove={handleDragMove}
+                    onPointerUp={handleDragEnd}
+                    onPointerCancel={handleDragEnd}
+                  >
+                    <DotsSixVertical size={16} weight="bold" />
+                  </span>
+                ) : (
+                  <div className="itin-plan-time">{p.t}</div>
                 )}
+                {Icon && <Icon size={19} weight="duotone" color={color} className="itin-plan-icon" />}
+                <div className="itin-plan-body">
+                  <div className="itin-plan-title-row">
+                    <span className="itin-plan-title">{p.title}</span>
+                    {p.notify && <BellRinging size={13} weight="duotone" color="var(--color-accent-700)" />}
+                  </div>
+                  {p.sub && <div className="itin-plan-sub">{linkifyText(p.sub)}</div>}
+                  {(p.drive || p.park) && (
+                    <div className="itin-plan-drive">
+                      {p.drive && `車程 ${p.drive}`}
+                      {p.drive && p.park && ' · '}
+                      {p.park && `停車 ${p.park}`}
+                    </div>
+                  )}
+                </div>
+                <CaretRight size={14} weight="bold" className="itin-plan-caret" />
               </div>
-              <CaretRight size={14} weight="bold" className="itin-plan-caret" />
             </div>
           )
         })}
+        {drag && drag.overIndex === dayPlans.length && <div className="itin-plan-dropline" />}
       </div>
 
       <button type="button" className="btn btn-secondary btn-block itin-add" onClick={handleAddPlan}>

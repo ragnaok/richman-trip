@@ -60,6 +60,7 @@ function rowToPlan(r: Record<string, unknown>): PlanItem {
     id: String(r.id),
     day: String(r.day),
     t: String(r.t),
+    order: Number(r.sort_order ?? r.order ?? 0),
     title: String(r.title),
     sub: (r.sub as string) ?? '',
     k: r.kind as PlanItem['k'],

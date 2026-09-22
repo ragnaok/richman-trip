@@ -4,6 +4,7 @@ CREATE TABLE members (                                      -- 身分（可管�
 CREATE TABLE plans (                                        -- 每日行程
   id TEXT PRIMARY KEY, day TEXT NOT NULL,                   -- '9/3'
   t TEXT NOT NULL,                                          -- '09:00' 或 '—'
+  sort_order REAL NOT NULL DEFAULT 0,                       -- 排序鍵：有時間的項目＝分鐘數，未定項目＝拖曳決定
   title TEXT NOT NULL, sub TEXT DEFAULT '',                 -- sub 可含換行（多行備註）
   kind TEXT NOT NULL,                                       -- f/r/c/s/e/h/p
   q TEXT DEFAULT '', spot TEXT, cands TEXT,                 -- cands 存 JSON 陣列字串

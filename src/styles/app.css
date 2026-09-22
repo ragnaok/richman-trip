@@ -448,6 +448,30 @@ body {
   color: color-mix(in srgb, var(--color-text) 35%, transparent);
 }
 
+.itin-plan-row.is-dragging {
+  opacity: 0.4;
+}
+
+/* 未定行程的拖曳把手：取代時間欄位。touch-action:none 讓手機上長按拖曳不會被系統
+   當成捲動手勢搶走。 */
+.itin-plan-drag-handle {
+  flex: none;
+  width: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  cursor: grab;
+  touch-action: none;
+}
+
+.itin-plan-dropline {
+  height: 2px;
+  margin: -1px 0;
+  background: var(--color-accent);
+  border-radius: 1px;
+}
+
 .itin-plan-icon {
   flex: none;
   margin-top: 1px;
