@@ -96,6 +96,10 @@ export default function ItineraryTab() {
     const rows = Array.from(list.querySelectorAll<HTMLElement>('.itin-plan-row'))
     let overIndex = rows.length
     for (let i = 0; i < rows.length; i++) {
+      // 跳過被拖的那一列自己：它現在用 translateY 跟著手指移動，rect 幾乎跟指標黏在
+      // 一起，拿來當插入門檻會把插入點焊在原位附近，要用力拖過頭才會偶然跳掉，
+      // 體感就是「要一直來回試」。門檻只該看不動的那些列。
+      if (dayPlans[i]?.id === dragging.id) continue
       const rect = rows[i].getBoundingClientRect()
       if (e.clientY < rect.top + rect.height / 2) {
         overIndex = i
