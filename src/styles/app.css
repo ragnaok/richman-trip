@@ -448,6 +448,46 @@ body {
   color: color-mix(in srgb, var(--color-text) 35%, transparent);
 }
 
+/* 「拿起來」的回饋：陰影＋放大（放大靠 JS 併進同一個 transform，見 ItineraryTab.tsx，
+   不能另外用 CSS transition 轉場，會跟 translateY 的即時跟手衝到，變成手指拖著跑但
+   畫面延遲跟上的黏滯感）。z-index/background 是因為疊在 box-shadow 底下的相鄰列
+   會透出來。 */
+.itin-plan-row.is-dragging {
+  position: relative;
+  z-index: 1;
+  background: var(--color-bg);
+  box-shadow: var(--shadow-md);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 未定行程的拖曳把手：取代時間欄位。touch-action:none 讓手機上長按拖曳不會被系統
+   當成捲動手勢搶走；user-select/-webkit-touch-callout 關掉文字選取與 iOS 長按跳出的
+   複製選單，不然長按會變成選取把手旁邊的文字，而不是觸發 pointerdown 拖曳。
+   -webkit-tap-highlight-color:transparent 才是黑色方塊的真正解法：那其實是 iOS
+   預設的按鈕點擊反白，全部按鈕都有，只是一般點一下太快閃一下看不出來，長按拖曳
+   因為手指按著不放，反白框會一直顯示著（之前猜合成層/原生手勢都是繞錯路）。 */
+.itin-plan-drag-handle {
+  flex: none;
+  width: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 讓開空間時的位移要有轉場，才看得出「東西在移動」；拖曳中的那一列本身不要轉場
+   （見上），不然會跟手指的即時位置脫節，變成延遲跟手的黏滯感。 */
+.itin-plan-row:not(.is-dragging) {
+  transition: transform 0.15s ease-out;
+}
+
 .itin-plan-icon {
   flex: none;
   margin-top: 1px;

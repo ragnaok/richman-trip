@@ -7,6 +7,7 @@ export interface PlanItem {
   id: number | string
   day: string // '9/3'
   t: string // 'HH:MM' 或 '—'（未定）
+  order: number // 排序鍵：有時間的項目＝分鐘數（存檔時自動算），未定項目＝拖曳決定，由 store.ts upsertPlan 統一維護
   title: string
   sub: string
   k: Kind
