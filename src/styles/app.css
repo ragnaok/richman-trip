@@ -448,8 +448,15 @@ body {
   color: color-mix(in srgb, var(--color-text) 35%, transparent);
 }
 
+/* 「拿起來」的回饋：陰影＋放大（放大靠 JS 併進同一個 transform，見 ItineraryTab.tsx，
+   不能另外用 CSS transition 轉場，會跟 translateY 的即時跟手衝到，變成手指拖著跑但
+   畫面延遲跟上的黏滯感）。z-index/background 是因為疊在 box-shadow 底下的相鄰列
+   會透出來。 */
 .itin-plan-row.is-dragging {
-  opacity: 0.4;
+  position: relative;
+  z-index: 1;
+  background: var(--color-bg);
+  box-shadow: var(--shadow-md);
   user-select: none;
   -webkit-user-select: none;
 }

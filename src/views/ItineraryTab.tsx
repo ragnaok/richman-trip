@@ -70,9 +70,13 @@ export default function ItineraryTab() {
   )
 
   // 未定行程（t === NA）拖曳排序：手刻 pointer events，不用 HTML5 draggable——
-  // 那組 API 在手機觸控上不會觸發，這支 App 只跑手機。drag 只記「插入位置」
-  // （overIndex，對齊 dayPlans 的 index 空間），放開時才真的算新 order 並寫回。
-  const [drag, setDrag] = useState<{ id: PlanItem['id']; overIndex: number } | null>(null)
+  // 那組 API 在手機觸控上不會觸發，這支 App 只跑手機。drag 記兩件事：overIndex（插入
+  // 位置，對齊 dayPlans 的 index 空間，放開時才真的算新 order 並寫回）跟 deltaY（手指
+  // 移動的距離，直接拿來 translateY 讓被拖的列跟著手指走，不然只有一條插入線在動，
+  // 使用者會覺得「東西沒有真的被拿起來」，回饋感很低）。
+  const [drag, setDrag] = useState<{ id: PlanItem['id']; overIndex: number; startY: number; deltaY: number } | null>(
+    null,
+  )
   const dragPointerRef = useRef<{ id: PlanItem['id']; pointerId: number } | null>(null)
   const plansListRef = useRef<HTMLDivElement>(null)
 
@@ -82,7 +86,7 @@ export default function ItineraryTab() {
     e.currentTarget.setPointerCapture(e.pointerId)
     dragPointerRef.current = { id, pointerId: e.pointerId }
     const idx = dayPlans.findIndex((p) => p.id === id)
-    setDrag({ id, overIndex: idx })
+    setDrag({ id, overIndex: idx, startY: e.clientY, deltaY: 0 })
   }
 
   function handleDragMove(e: ReactPointerEvent<HTMLSpanElement>) {
@@ -98,7 +102,7 @@ export default function ItineraryTab() {
         break
       }
     }
-    setDrag((d) => (d ? { ...d, overIndex } : d))
+    setDrag((d) => (d ? { ...d, overIndex, deltaY: e.clientY - d.startY } : d))
   }
 
   function handleDragEnd(e: ReactPointerEvent<HTMLSpanElement>) {
@@ -255,6 +259,7 @@ export default function ItineraryTab() {
               {drag && drag.overIndex === i && drag.id !== p.id && <div className="itin-plan-dropline" />}
               <div
                 className={`itin-plan-row${drag?.id === p.id ? ' is-dragging' : ''}`}
+                style={drag?.id === p.id ? { transform: `translateY(${drag.deltaY}px) scale(1.03)` } : undefined}
                 role="button"
                 tabIndex={0}
                 onClick={() => openDetail(day, p.id)}
