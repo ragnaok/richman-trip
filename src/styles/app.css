@@ -450,10 +450,13 @@ body {
 
 .itin-plan-row.is-dragging {
   opacity: 0.4;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* 未定行程的拖曳把手：取代時間欄位。touch-action:none 讓手機上長按拖曳不會被系統
-   當成捲動手勢搶走。 */
+   當成捲動手勢搶走；user-select/-webkit-touch-callout 關掉文字選取與 iOS 長按跳出的
+   複製選單，不然長按會變成選取把手旁邊的文字，而不是觸發 pointerdown 拖曳。 */
 .itin-plan-drag-handle {
   flex: none;
   width: 48px;
@@ -463,6 +466,9 @@ body {
   color: color-mix(in srgb, var(--color-text) 45%, transparent);
   cursor: grab;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .itin-plan-dropline {
