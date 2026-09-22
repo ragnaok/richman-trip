@@ -87,18 +87,18 @@ export default function ItineraryTab() {
   const dragPointerRef = useRef<{ id: PlanItem['id']; pointerId: number } | null>(null)
   const plansListRef = useRef<HTMLDivElement>(null)
 
-  // 長按 1 秒才真的進入拖曳模式，不然手指從把手上滑過想捲動頁面，會被誤判成拖曳
-  // （把手就卡在行程列表中間，手勢起點很容易剛好壓到）。pointerdown 當下只記錄
-  // 起點、開一個 1 秒計時器；等待期間手指移動超過門檻就視為使用者不是要長按，取消
+  // 長按滿 LONG_PRESS_MS 才真的進入拖曳模式，不然手指從把手上滑過想捲動頁面，會被
+  // 誤判成拖曳（把手就卡在行程列表中間，手勢起點很容易剛好壓到）。pointerdown 當下
+  // 只記錄起點、開一個計時器；等待期間手指移動超過門檻就視為使用者不是要長按，取消
   // 計時器、什麼都不做。計時器真的到點了才呼叫 armDrag 進入原本的拖曳邏輯。
   //
   // 注意：這個長按門檻只能防止「誤判成拖曳」，沒辦法順便讓等待期間可以正常捲動
   // 頁面——試過把把手的 touch-action 從 none 改成 pan-y 想讓等待期捲動照常運作，
-  // 結果連長按滿 1 秒後真的開始拖曳，瀏覽器都會把那個移動當成原生捲動接管走，
+  // 結果連長按到點後真的開始拖曳，瀏覽器都會把那個移動當成原生捲動接管走，
   // preventDefault 已經來不及擋（touch-action 是手指碰到那一刻就整段手勢鎖定的，
   // 中途沒辦法用 JS 切換）。所以把手還是 touch-action:none，手勢起點壓在這 48px
-  // 寬的把手上時，就算沒滿 1 秒放開，那次觸控也不會有捲動效果，只是不會誤觸拖曳。
-  const LONG_PRESS_MS = 1000
+  // 寬的把手上時，就算沒到門檻放開，那次觸控也不會有捲動效果，只是不會誤觸拖曳。
+  const LONG_PRESS_MS = 500
   const MOVE_CANCEL_PX = 10
   const pendingRef = useRef<{
     id: PlanItem['id']
