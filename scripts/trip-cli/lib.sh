@@ -10,6 +10,10 @@ MIGRATIONS_DIR="$REPO_ROOT/migrations"
 # 這個資料夾要自己另外搬過去（見 scripts/trip-cli/README.md）。
 LOCAL_TRIPS_DIR="$REPO_ROOT/local-trips"
 
+# worker-cron 是帳號層級共用的 Worker，不是行程層級，設定檔另外用 profile 分
+# （不是 trip），同樣理由不進 git——見 worker-cron/wrangler.toml 開頭註解。
+LOCAL_WORKER_CRON_DIR="$REPO_ROOT/local-worker-cron"
+
 log_info() { printf '\033[36m▸\033[0m %s\n' "$*"; }
 log_warn() { printf '\033[33m⚠\033[0m %s\n' "$*"; }
 log_err()  { printf '\033[31m✘\033[0m %s\n' "$*" >&2; }
@@ -186,6 +190,135 @@ restore_local_trip() {
     git status --short -- public/ index.html wrangler.toml
   else
     log_ok "本機素材已換回範本內容（git status 乾淨）。"
+  fi
+}
+
+# 過渡期輔助：local-worker-cron/<profile>/wrangler.toml 不存在時（trip.conf
+# 已經有了，代表用過舊版 deploy-worker-cron.sh／new-trip.sh，但這次重構新增的
+# local-worker-cron/ 從沒建過）試著自動還原一份，不是用猜的，兩個來源都是既有
+# 事實：
+# 1. 重構前最後一次 commit 的 worker-cron/wrangler.toml（`git log` 找這支檔案
+#    倒數第二筆）——如果這個 profile 底下任一行程的 binding 出現在那份裡，代表
+#    這個 profile 就是原本 main 上共用的那個帳號，整份複製過來（可能含好幾趟
+#    行程的 binding，不能只複製當下這一趟，不然漏掉的行程會被排除在共用的
+#    worker-cron 之外，reminders 停擺）。
+# 2. 找不到（代表這個 profile 是當初走「全新帳號」流程獨立部署出來的）：
+#    local-trips/<sibling>/wrangler.toml 裡的 database_id 其實跟 worker-cron
+#    的 D1 binding 是同一個資料庫（只是 binding 名稱不同），拿來幫這個 profile
+#    底下所有已知的行程各組一組 binding，name 用 <profile>-trip-cron（
+#    new-trip.sh 當初全新帳號流程的命名慣例）。
+#
+# 已經存在就什麼都不做，不會覆蓋使用者可能手動調整過的版本。這是在幫雲端上
+# 已經真實存在的 Worker 補一份本機設定檔，寫錯會導致下次部署跑錯帳號，補完
+# 一律印出來、要求使用者自己核對，不能靜默做掉。真的兩邊都推不出來（例如
+# local-trips/<trip>/wrangler.toml 本身讀不到 database_id）就跳過那趟行程，
+# 讓下面的 apply_worker_cron_conf 用現有機制報錯，不強行生一份可能是錯的設定。
+ensure_worker_cron_conf() {
+  local trip="$1" profile="$2"
+  local conf="$LOCAL_WORKER_CRON_DIR/$profile/wrangler.toml"
+  [ -f "$conf" ] && return 0
+
+  local siblings
+  siblings="$(find_profile_siblings "$profile" "")"
+
+  local legacy_commit
+  legacy_commit="$(git -C "$REPO_ROOT" log --format=%H -- worker-cron/wrangler.toml | sed -n '2p')"
+  local legacy_toml=""
+  [ -n "$legacy_commit" ] && legacy_toml="$(git -C "$REPO_ROOT" show "${legacy_commit}:worker-cron/wrangler.toml" 2>/dev/null || true)"
+
+  local t binding found_in_legacy=0
+  if [ -n "$legacy_toml" ]; then
+    for t in $siblings; do
+      binding="DB_$(echo "$t" | tr '[:lower:]-' '[:upper:]_')"
+      if echo "$legacy_toml" | grep -q "\"$binding\""; then
+        found_in_legacy=1
+        break
+      fi
+    done
+  fi
+
+  mkdir -p "$LOCAL_WORKER_CRON_DIR/$profile"
+
+  if [ "$found_in_legacy" = 1 ]; then
+    log_warn "profile「${profile}」沒有 local-worker-cron/${profile}/wrangler.toml，但這個"
+    log_warn "帳號的行程在重構前的版本（${legacy_commit}）裡找得到，判斷這是原本 main 上"
+    log_warn "共用的那個帳號，從那個版本自動還原一份："
+    echo "$legacy_toml" > "$conf"
+  else
+    log_warn "profile「${profile}」沒有 local-worker-cron/${profile}/wrangler.toml，也不在"
+    log_warn "重構前的版本裡，判斷這是獨立部署的跨帳號 worker-cron，從"
+    log_warn "local-trips/<trip>/wrangler.toml 的 database_id 幫已知的行程自動重建一份："
+    {
+      echo "# ${profile} 這個 Cloudflare 帳號專用的 worker-cron 部署設定，由"
+      echo "# ensure_worker_cron_conf（scripts/trip-cli/lib.sh）自動還原。"
+      echo "# 部署前請核對 name／每組 D1 binding 是否跟雲端上實際部署的一致（Dashboard →"
+      echo "# Workers & Pages → 該 Worker → Settings → Bindings），有出入手動修正。"
+      echo "name = \"${profile}-trip-cron\""
+      echo "main = \"src/index.ts\""
+      echo "compatibility_date = \"2026-01-01\""
+      echo
+      echo "[triggers]"
+      echo "crons = [\"* * * * *\"]"
+      for t in $siblings; do
+        local trip_wrangler="$LOCAL_TRIPS_DIR/$t/wrangler.toml"
+        local db_id
+        db_id="$(grep -A3 '\[\[d1_databases\]\]' "$trip_wrangler" 2>/dev/null | grep database_id | sed -E 's/.*"(.+)".*/\1/' || true)"
+        if [ -z "$db_id" ]; then
+          log_err "讀不到 ${trip_wrangler} 裡的 database_id，無法幫 ${t} 補 binding，跳過（手動處理）。"
+          continue
+        fi
+        binding="DB_$(echo "$t" | tr '[:lower:]-' '[:upper:]_')"
+        echo
+        echo "[[d1_databases]]"
+        echo "binding = \"${binding}\""
+        echo "database_name = \"${t}\""
+        echo "database_id = \"${db_id}\""
+      done
+    } > "$conf"
+  fi
+
+  log_warn "已自動建立 ${conf}，部署前請自行核對內容（見下）："
+  cat "$conf"
+}
+
+# 部署前把 worker-cron/wrangler.toml 換成這個 profile 在 local-worker-cron/<profile>/
+# 裡的版本（哪些行程的 D1 binding 掛在這支 Worker 上，完全由這份檔案決定——
+# src/index.ts 不用跟著改，見該檔開頭註解）。找不到就直接報錯：worker-cron 需要
+# 帳號專屬的 D1 binding／Worker 名稱，沒有這份檔案沒辦法部署，不能生一份預設的
+# 出來（那樣會用錯的帳號設定覆蓋掉不相干的 Worker）——真的要自動補，先呼叫上面
+# 的 ensure_worker_cron_conf。
+# 回傳一個備份目錄路徑；用法：
+#   backup="$(apply_worker_cron_conf "$profile")"
+#   trap 'restore_worker_cron_conf "$backup"' EXIT
+apply_worker_cron_conf() {
+  local profile="$1"
+  local conf="$LOCAL_WORKER_CRON_DIR/$profile/wrangler.toml"
+  if [ ! -f "$conf" ]; then
+    log_err "找不到 ${conf}。"
+    log_err "這個 profile 還沒設定過 worker-cron，需要先手動建立這份檔案"
+    log_err "（哪些行程的 D1 binding、Worker 名稱要用哪個——參考"
+    log_err "local-worker-cron/duncan/wrangler.toml 的格式）。"
+    exit 1
+  fi
+
+  local backup_dir
+  backup_dir="$(mktemp -d)"
+  cp "$REPO_ROOT/worker-cron/wrangler.toml" "$backup_dir/wrangler.toml"
+  cp "$conf" "$REPO_ROOT/worker-cron/wrangler.toml"
+  echo "$backup_dir"
+}
+
+restore_worker_cron_conf() {
+  local backup_dir="$1"
+  [ -n "$backup_dir" ] && [ -d "$backup_dir" ] || return 0
+  cp "$backup_dir/wrangler.toml" "$REPO_ROOT/worker-cron/wrangler.toml"
+  rm -rf "$backup_dir"
+  cd "$REPO_ROOT"
+  if [ -n "$(git status --short -- worker-cron/wrangler.toml)" ]; then
+    log_err "worker-cron/wrangler.toml 換回 main 版本後跟版控不一致，手動檢查！絕對不要 commit："
+    git status --short -- worker-cron/wrangler.toml
+  else
+    log_ok "worker-cron/wrangler.toml 已換回 main 版本（git status 乾淨）。"
   fi
 }
 

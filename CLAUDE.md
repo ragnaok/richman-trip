@@ -86,9 +86,11 @@ wrangler pages deployment list --project-name <project>
 
 **開新行程時不要重新產生 VAPID 金鑰**，那會讓所有既有訂閱一次失效；新行程 Pages 專案的 `VAPID_PUBLIC_KEY`／`VAPID_PRIVATE_KEY` 必須跟 `worker-cron` 用的是同一組，否則訂閱建得起來但收不到通知（push 服務會拒絕簽章不符的請求）。
 
-開新行程只需要：`worker-cron/wrangler.toml` 加一組 `[[d1_databases]]`（binding 用 `DB_<行程代號>`）、`src/index.ts` 的 `TRIPS` 加一筆、重跑一次 `wrangler deploy`。不用另開 Worker，也不用另設 cron-job.org。
+開新行程用 `scripts/trip-cli/new-trip.sh`；同帳號已有行程時它會自動在 `local-worker-cron/<profile>/wrangler.toml`（帳號層級的設定檔，不進版控，見 `scripts/trip-cli/README.md`）加一組 `[[d1_databases]]` 並重新部署，不用另開 Worker，也不用另設 cron-job.org，也不用碰 `src/index.ts`——`worker-cron/src/index.ts` 是所有帳號共用的同一份程式碼，main 上永遠只 commit 這一份，D1 binding 掛了哪些行程完全由 wrangler.toml 決定，程式碼在執行時動態掃出來。
 
 只有**跨 Cloudflare 帳號**才需要各自獨立部署一份 `worker-cron`（各自的 VAPID、`CRON_SECRET`、cron-job.org 設定）。
+
+**`local-worker-cron/<profile>/wrangler.toml` 不存在時**（既有行程第一次拉到這個版本、還沒建過這份帳號層級設定檔）不要用猜的手動生一份、也不要直接改回舊版寫法——`scripts/trip-cli/deploy-worker-cron.sh` 會自動偵測並還原（見 `lib.sh` 的 `ensure_worker_cron_conf`），詳細判斷邏輯與手動情境見 `scripts/trip-cli/README.md`「從舊版遷移」。
 
 ### 為什麼推播要另開一個 Worker
 

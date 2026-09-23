@@ -8,6 +8,17 @@
 # profile 走、不是跟著行程走）——同一個 profile 底下傳哪個行程的 slug，部署的
 # 都是同一支 Worker，一次部署會套用到該帳號底下全部行程。
 #
+# main 上 commit 的 worker-cron/wrangler.toml 刻意不含任何帳號的 D1 binding
+# （見該檔開頭註解）：每個 profile 真正要部署的內容存在本機 local-worker-cron/
+# <profile>/wrangler.toml（gitignored），部署前換進去、部署完立刻換回 main 版本，
+# 絕對不 commit（跟 apply_local_trip 換 Pages 素材是同一招）。src/index.ts 不用
+# 跟著換——它是所有帳號共用的同一份，binding 掛了哪些行程的 D1 在執行時動態掃出來
+# （見該檔開頭註解），這支腳本不需要為了跨帳號另外改寫程式碼。
+#
+# 用過舊版腳本、還沒建過 local-worker-cron/<profile>/wrangler.toml 的過渡期會
+# 先自動嘗試還原一份（見 lib.sh ensure_worker_cron_conf），還原結果一律印出來
+# 給使用者核對，不是靜默做掉。
+#
 # 刻意不做 git checkout main／git pull，也不擋工作目錄有沒有未 commit 的變更——
 # 直接以當前進度（不管在哪個分支、有沒有 commit）部署。
 #
@@ -33,6 +44,10 @@ if [ -n "$SIBLINGS" ]; then
 else
   log_info "profile「${PROFILE}」底下目前只有 ${TRIP} 這一趟行程。"
 fi
+
+ensure_worker_cron_conf "$TRIP" "$PROFILE"
+BACKUP="$(apply_worker_cron_conf "$PROFILE")"
+trap 'restore_worker_cron_conf "$BACKUP"' EXIT
 
 log_info "型別檢查（worker-cron/）……"
 (cd worker-cron && npx tsc --noEmit)
