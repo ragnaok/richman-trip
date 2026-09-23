@@ -10,6 +10,10 @@ MIGRATIONS_DIR="$REPO_ROOT/migrations"
 # 這個資料夾要自己另外搬過去（見 scripts/trip-cli/README.md）。
 LOCAL_TRIPS_DIR="$REPO_ROOT/local-trips"
 
+# worker-cron 是帳號層級共用的 Worker，不是行程層級，設定檔另外用 profile 分
+# （不是 trip），同樣理由不進 git——見 worker-cron/wrangler.toml 開頭註解。
+LOCAL_WORKER_CRON_DIR="$REPO_ROOT/local-worker-cron"
+
 log_info() { printf '\033[36m▸\033[0m %s\n' "$*"; }
 log_warn() { printf '\033[33m⚠\033[0m %s\n' "$*"; }
 log_err()  { printf '\033[31m✘\033[0m %s\n' "$*" >&2; }
@@ -186,6 +190,46 @@ restore_local_trip() {
     git status --short -- public/ index.html wrangler.toml
   else
     log_ok "本機素材已換回範本內容（git status 乾淨）。"
+  fi
+}
+
+# 部署前把 worker-cron/wrangler.toml 換成這個 profile 在 local-worker-cron/<profile>/
+# 裡的版本（哪些行程的 D1 binding 掛在這支 Worker 上，完全由這份檔案決定——
+# src/index.ts 不用跟著改，見該檔開頭註解）。找不到就直接報錯：worker-cron 需要
+# 帳號專屬的 D1 binding／Worker 名稱，沒有這份檔案沒辦法部署，不能生一份預設的
+# 出來（那樣會用錯的帳號設定覆蓋掉不相干的 Worker）。
+# 回傳一個備份目錄路徑；用法：
+#   backup="$(apply_worker_cron_conf "$profile")"
+#   trap 'restore_worker_cron_conf "$backup"' EXIT
+apply_worker_cron_conf() {
+  local profile="$1"
+  local conf="$LOCAL_WORKER_CRON_DIR/$profile/wrangler.toml"
+  if [ ! -f "$conf" ]; then
+    log_err "找不到 ${conf}。"
+    log_err "這個 profile 還沒設定過 worker-cron，需要先手動建立這份檔案"
+    log_err "（哪些行程的 D1 binding、Worker 名稱要用哪個——參考"
+    log_err "local-worker-cron/duncan/wrangler.toml 的格式）。"
+    exit 1
+  fi
+
+  local backup_dir
+  backup_dir="$(mktemp -d)"
+  cp "$REPO_ROOT/worker-cron/wrangler.toml" "$backup_dir/wrangler.toml"
+  cp "$conf" "$REPO_ROOT/worker-cron/wrangler.toml"
+  echo "$backup_dir"
+}
+
+restore_worker_cron_conf() {
+  local backup_dir="$1"
+  [ -n "$backup_dir" ] && [ -d "$backup_dir" ] || return 0
+  cp "$backup_dir/wrangler.toml" "$REPO_ROOT/worker-cron/wrangler.toml"
+  rm -rf "$backup_dir"
+  cd "$REPO_ROOT"
+  if [ -n "$(git status --short -- worker-cron/wrangler.toml)" ]; then
+    log_err "worker-cron/wrangler.toml 換回 main 版本後跟版控不一致，手動檢查！絕對不要 commit："
+    git status --short -- worker-cron/wrangler.toml
+  else
+    log_ok "worker-cron/wrangler.toml 已換回 main 版本（git status 乾淨）。"
   fi
 }
 

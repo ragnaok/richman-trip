@@ -12,26 +12,35 @@
 // 修好會自動接手，兩邊同時觸發也不會重複發送（sent_at 天然去重）。
 import { buildPushHTTPRequest } from '@pushforge/builder'
 
+// D1 binding 不寫死在這裡：這支檔案是所有 Cloudflare 帳號共用的同一份（main 上
+// 只 commit 這一份，不會為任何帳號另外改它），實際綁了哪些行程的 D1 完全由
+// wrangler.toml 決定（scripts/trip-cli/deploy-worker-cron.sh 部署前會把對應
+// 帳號的 local-worker-cron/<profile>/wrangler.toml 換進來）。VAPID_PRIVATE_KEY／
+// CRON_SECRET 這兩個 Secret 固定存在，其餘 key 用 [key: string]: unknown 接住，
+// resolveTrips() 在執行時掃過去找出所有 D1Database binding。
 interface Env {
   VAPID_PRIVATE_KEY: string
   CRON_SECRET: string
-  DB_INUYAMA: D1Database
-  DB_OKAYAMA: D1Database
+  [key: string]: unknown
 }
 
-// 一支 Worker 共用給所有用這套模板開的行程，各趟行程的 D1 完全獨立。
-// 開新行程：wrangler.toml 加一組 [[d1_databases]]，這裡加一筆對應項目，例如：
-// { name: 'inuyama', db: (env) => env.DB_INUYAMA }
-// （scripts/trip-cli/new-trip.sh 同帳號開新行程時會自動處理這兩處。）
 interface TripConfig {
   name: string
-  db: (env: Env) => D1Database
+  db: D1Database
 }
 
-const TRIPS: TripConfig[] = [
-  { name: 'inuyama', db: (env) => env.DB_INUYAMA },
-  { name: 'okayama', db: (env) => env.DB_OKAYAMA },
-]
+// 開新行程只需要在 wrangler.toml 加一組 [[d1_databases]]（binding 隨便取，但
+// scripts/trip-cli 產生的一律是 DB_<TRIP_SLUG 轉大寫底線>），不用改這支檔案——
+// binding 名稱本身就是唯一的資料來源，這裡直接反推回行程名稱（DB_YI_CHIAN_OSAKA
+// → yi-chian-osaka）純粹是為了讓失敗時的 log 訊息看得出是哪趟行程，不影響邏輯。
+function resolveTrips(env: Env): TripConfig[] {
+  return Object.keys(env)
+    .filter((key) => key.startsWith('DB_'))
+    .map((key) => ({
+      name: key.slice(3).toLowerCase().replace(/_/g, '-'),
+      db: env[key] as D1Database,
+    }))
+}
 
 interface PlanRow {
   id: string
@@ -224,9 +233,9 @@ async function processTrip(db: D1Database, vapidPrivateKey: string) {
 
 async function runAllTrips(env: Env) {
   await Promise.all(
-    TRIPS.map(async (trip) => {
+    resolveTrips(env).map(async (trip) => {
       try {
-        await processTrip(trip.db(env), env.VAPID_PRIVATE_KEY)
+        await processTrip(trip.db, env.VAPID_PRIVATE_KEY)
       } catch (err) {
         // 單一行程的 D1 出錯不擋掉其他行程這一輪的提醒。
         console.error(`[${trip.name}] run failed:`, err)

@@ -1,40 +1,29 @@
 # 獨立的 Cloudflare Worker，每分鐘掃過每趟行程自己的 D1 發 Web Push 提醒。
-# 一支 Worker 共用給同一個 Cloudflare 帳號底下所有用這套模板開的行程（見 src/index.ts
-# 的 TRIPS），不是每複製一份 Pages 專案就多開一支。
+# 一支 Worker 共用給同一個 Cloudflare 帳號底下所有用這套模板開的行程（見
+# src/index.ts 開頭註解），不是每複製一份 Pages 專案就多開一支。
 #
 # 之所以獨立而不是掛在 functions/api/*：Pages Functions 不支援 Cron Trigger，
-# scheduled() 是 Workers 專屬功能。部署單位也獨立：`cd worker-cron && wrangler deploy`。
+# scheduled() 是 Workers 專屬功能。部署單位也獨立：
+# `scripts/trip-cli/deploy-worker-cron.sh <trip-slug>`。
 #
-# 同帳號開新行程要做兩件事：
-# 1. 下面加一組 [[d1_databases]]（binding 用 DB_<行程代號>）
-# 2. src/index.ts 的 TRIPS 陣列加一筆對應項目
+# 這份是 main 上唯一 commit 的版本，刻意不含任何帳號的 D1 binding——每個
+# Cloudflare 帳號（用 profile 區分）真正要部署的內容存在本機
+# `local-worker-cron/<profile>/wrangler.toml`（gitignored，不進版控，跟
+# `local-trips/<trip>/wrangler.toml` 對 Pages 部署是同一招）。
+# `deploy-worker-cron.sh` 部署前會把對應 profile 的版本換進來、部署完換回這份，
+# 讓 main 上不會留下任何帳號的痕跡。開新行程要做的事：
+# 1. `local-worker-cron/<profile>/wrangler.toml`（沒有就先建一份）加一組
+#    [[d1_databases]]，binding 用 DB_<行程代號轉大寫底線>。
+# 2. 不用改 src/index.ts——它是所有帳號共用的同一份，binding 掛了哪些行程的 D1
+#    完全由 wrangler.toml 決定，程式碼在執行時動態掃出來（見該檔開頭註解）。
 #
-# 跨帳號無法共用：Worker 綁在單一帳號底下，看不到別的帳號的 D1，得各自部署一份。
-#
-# name 沿用「inuyama-trip-cron」這個歷史名稱（第一趟行程是犬山，取名時還沒想到
-# 會變成帳號共用），不要改掉——Cloudflare 上已經有一支同名的 Worker 在跑，改名
-# 會讓 `wrangler deploy` 另外開一支新的，舊的那支還在跑但收不到更新，而且外部
-# cron-job.org 排程打的網址是這支 Worker 現在的網域，改名等於要重新設一次排程。
-name = "inuyama-trip-cron"
+# name 刻意留一個不會被誤用的假名稱：這份本身從來不會真的拿去部署（每次部署
+# 前一定會被換掉），萬一有人忘記透過 deploy-worker-cron.sh、直接在這個目錄下
+# 手動跑 `wrangler deploy`，用假名稱＋沒有任何 D1 binding 部署出來的東西一望即知
+# 是錯的，不會悄悄覆蓋掉任何一個帳號真正在跑的 Worker。
+name = "worker-cron-unconfigured"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
 
 [triggers]
 crons = ["* * * * *"]
-
-# 每趟行程各加一組，binding 對應 src/index.ts 的 TRIPS 陣列。
-[[d1_databases]]
-binding = "DB_INUYAMA"
-database_name = "inuyama"
-database_id = "53a05395-b04a-4052-9447-166db31702cf"
-
-[[d1_databases]]
-binding = "DB_OKAYAMA"
-database_name = "okayama"
-database_id = "3f5a1580-05d6-433e-822f-a1567ee72179"
-
-# Secrets（`wrangler secret put VAPID_PRIVATE_KEY` 在這個目錄下執行）：
-# VAPID_PRIVATE_KEY — JWK JSON 字串，`npx @pushforge/builder vapid` 產生的那組私鑰。
-# 所有行程共用同一組——VAPID 代表的是「這個 Worker 的身分」，不是每趟行程各自的身分，
-# 跟每個 Pages 專案各自的 VAPID_PUBLIC_KEY（前端訂閱用）要是同一組公私鑰配對，
-# 不要為了「每趟行程分開」而各生一組，那樣訂閱會全部失效。

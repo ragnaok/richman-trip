@@ -36,3 +36,8 @@ dist-ssr
 # 跟本機快取的 VAPID 金鑰，刻意不進版控——見 scripts/trip-cli/README.md
 /local-trips
 /.trip-cli-cache
+
+# worker-cron 是帳號層級共用的 Worker，不是行程層級，所以設定檔另外用 profile
+# 分（不是 trip），跟 local-trips 同樣的理由不進版控——見 worker-cron/wrangler.toml
+# 開頭註解、scripts/trip-cli/README.md
+/local-worker-cron

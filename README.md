@@ -168,7 +168,7 @@ wrangler deploy
 
    `deploy/<trip>/wrangler.toml` 只是存放該行程設定的地方，`main` 上沒有這個目錄，內容留在各行程分支。`--branch` 要帶該專案實際設定的 production branch 名稱（用 `wrangler pages deployment list` 查，帶錯會被歸類成 Preview）。
 
-**`worker-cron/` 不用比照辦理**：同一個 Cloudflare 帳號下只要在 `worker-cron/wrangler.toml` 加一組 `[[d1_databases]]`、`src/index.ts` 的 `TRIPS` 加一筆，重跑一次 `wrangler deploy` 即可。跨帳號才需要各自獨立部署。
+**`worker-cron/` 不用比照辦理**：它是帳號層級共用的 Worker，設定不進版控，用 `scripts/trip-cli/deploy-worker-cron.sh <trip-slug>` 部署（同帳號、跨帳號都走同一支腳本），細節見 `scripts/trip-cli/README.md`「`worker-cron` 是帳號層級共用」。
 
 ## 專案結構
 
