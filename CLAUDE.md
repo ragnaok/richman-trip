@@ -90,6 +90,8 @@ wrangler pages deployment list --project-name <project>
 
 只有**跨 Cloudflare 帳號**才需要各自獨立部署一份 `worker-cron`（各自的 VAPID、`CRON_SECRET`、cron-job.org 設定）。
 
+**`local-worker-cron/<profile>/wrangler.toml` 不存在時**（既有行程第一次拉到這個版本、還沒建過這份帳號層級設定檔）不要用猜的手動生一份、也不要直接改回舊版寫法——`scripts/trip-cli/deploy-worker-cron.sh` 會自動偵測並還原（見 `lib.sh` 的 `ensure_worker_cron_conf`），詳細判斷邏輯與手動情境見 `scripts/trip-cli/README.md`「從舊版遷移」。
+
 ### 為什麼推播要另開一個 Worker
 
 Cloudflare Pages Functions **不支援 Cron Trigger**（`scheduled()` 是 Workers 專屬），這是查證過的平台限制，不是繞遠路。`worker-cron/` 是完全獨立的部署單位，跟 Pages 部署互不影響。

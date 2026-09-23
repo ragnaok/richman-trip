@@ -15,6 +15,10 @@
 # 跟著換——它是所有帳號共用的同一份，binding 掛了哪些行程的 D1 在執行時動態掃出來
 # （見該檔開頭註解），這支腳本不需要為了跨帳號另外改寫程式碼。
 #
+# 用過舊版腳本、還沒建過 local-worker-cron/<profile>/wrangler.toml 的過渡期會
+# 先自動嘗試還原一份（見 lib.sh ensure_worker_cron_conf），還原結果一律印出來
+# 給使用者核對，不是靜默做掉。
+#
 # 刻意不做 git checkout main／git pull，也不擋工作目錄有沒有未 commit 的變更——
 # 直接以當前進度（不管在哪個分支、有沒有 commit）部署。
 #
@@ -41,6 +45,7 @@ else
   log_info "profile「${PROFILE}」底下目前只有 ${TRIP} 這一趟行程。"
 fi
 
+ensure_worker_cron_conf "$TRIP" "$PROFILE"
 BACKUP="$(apply_worker_cron_conf "$PROFILE")"
 trap 'restore_worker_cron_conf "$BACKUP"' EXIT
 

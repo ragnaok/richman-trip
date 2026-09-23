@@ -67,6 +67,45 @@ main 上永遠只 commit 這一份；D1 binding 掛了哪些行程完全由 `wra
 Cloudflare 帳號的行程（例如 inuyama、okayama）只對應**一份** `local-worker-cron/
 <profile>/wrangler.toml`——換機器只要搬這一份，不用照行程數量各搬一份。
 
+### 從舊版遷移：`local-worker-cron/<profile>/wrangler.toml` 不存在時怎麼辦
+
+這個資料夾是重構後才有的東西（見這支腳本的 git log），既有行程第一次拉到這個
+版本、`local-worker-cron/` 底下是空的很正常。遇到 `deploy-worker-cron.sh` 抱怨
+D1 binding／找不到帳號設定時，先看是下面哪一種情況——**判斷依據是本機有沒有
+`local-trips/<trip>/trip.conf`**：
+
+- **有 `trip.conf`（用過 trip-cli 的舊版腳本，只是還沒建過
+  `local-worker-cron/`）**：什麼都不用做，直接照常跑
+  `scripts/trip-cli/deploy-worker-cron.sh <trip-slug>`——`lib.sh` 的
+  `ensure_worker_cron_conf` 會在部署前自動偵測並補上這份檔案：
+  - 這個帳號原本是 `main` 上共用的那個（例如 duncan／inuyama+okayama）：從
+    重構前最後一次 commit 的 `worker-cron/wrangler.toml` 整份還原。
+  - 這個帳號是跨帳號獨立部署出來的（例如 yi-chian）：從
+    `local-trips/<trip>/wrangler.toml` 的 `database_id` 反推重建，`name` 用
+    `<profile>-trip-cron`。
+
+  補完的內容一律會印出來，**部署前自己核對一次**（尤其 `name` 要跟 Cloudflare
+  Dashboard 上實際在跑的 Worker 一致，不一致 `wrangler deploy` 會另外開一支新的、
+  舊的收不到更新）；確認沒問題就讓它繼續部署，之後這個 profile 就正常了，不用
+  每次都重新偵測。
+
+- **沒有 `trip.conf`（從沒用過任何 trip-cli 腳本，一直手動
+  `cd worker-cron && wrangler deploy`）**：這個沒辦法自動化，連行程代號、
+  `PROFILE` 都無從得知。手動兩步：
+  1. 補 `local-trips/<trip>/trip.conf`（`PROFILE`／`PAGES_PROJECT`／
+     `PROD_BRANCH`／`D1_NAME`，格式照既有行程的範例；`ACCOUNT_ID` 只有多帳號
+     profile 才要填，見下方「什麼時候需要 `ACCOUNT_ID`」）。
+  2. 補 `local-worker-cron/<profile>/wrangler.toml`：去 Cloudflare Dashboard →
+     Workers & Pages → 找到那支 Worker → Settings → Bindings，把 `name`、每個
+     D1 binding 的名稱跟 `database_id` 抄下來，照 `local-worker-cron/duncan/
+     wrangler.toml` 的格式寫一份。`name` 一定要跟雲端上實際的 Worker 一致。
+
+  兩種情況都**不用動 Secrets**（`VAPID_PRIVATE_KEY`／`CRON_SECRET`）——
+  `deploy-worker-cron.sh` 只換 `wrangler.toml`、部署程式碼，不會動到已經設好的
+  Secrets。檔案補完先用 `(cd worker-cron && npx wrangler deploy --profile
+  <profile> --dry-run)` 確認列出來的 binding 是預期的那些，再正式跑
+  `deploy-worker-cron.sh <trip-slug>`。
+
 ### 什麼時候需要 `ACCOUNT_ID`
 
 `PROFILE` 只決定用哪組 Cloudflare 登入憑證，不是帳號本身——如果這組憑證同時
