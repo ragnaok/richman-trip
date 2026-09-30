@@ -32,8 +32,64 @@ cd "$REPO_ROOT"
 
 if [ -d "$LOCAL_TRIPS_DIR/$TRIP" ]; then
   log_err "$LOCAL_TRIPS_DIR/$TRIP 已經存在，這趟行程是不是已經開過了？"
+  log_err "如果是上次跑到一半失敗留下的，正常情況下失敗時腳本會自動清乾淨；"
+  log_err "看到這個訊息通常代表上一次是在還沒補這個自動清理之前失敗的，手動檢查"
+  log_err "／刪除 D1、Pages 專案、$LOCAL_TRIPS_DIR/$TRIP 後再重跑。"
   exit 1
 fi
+
+# 跑到一半失敗（wrangler 指令出錯、使用者輸入驗證失敗……）就沒辦法繼續往下走，
+# 與其留一堆建了一半的雲端資源要手動一個一個上 dashboard 刪，不如直接自動清乾淨、
+# 讓使用者改完問題直接重跑 new-trip.sh 就好。只清「這次執行自己建立的」東西：
+# 用 _CLEANUP_* 旗標追蹤做到哪一步，不去動本來就存在的資源（例如同帳號沿用的
+# VAPID 快取、其他行程的 worker-cron 設定）。
+_CLEANUP_D1=0
+_CLEANUP_PAGES=0
+_CLEANUP_LOCAL_TRIPS=0
+_CLEANUP_WC_CONF=0
+_CLEANUP_DONE=0
+
+cleanup_on_error() {
+  local ec="${1:-$?}"
+  [ "$_CLEANUP_DONE" = 1 ] && return
+  _CLEANUP_DONE=1
+  trap - ERR
+  echo
+  log_err "失敗了（exit code $ec），自動清理這次建立到一半的雲端資源／本機檔案……"
+  if [ "$_CLEANUP_WC_CONF" = 1 ]; then
+    if [ "$_WC_CONF_EXISTED" = 1 ]; then
+      log_warn "還原 ${WC_CONF}（移除這次加的 D1 binding）……"
+      printf '%s\n' "$_WC_CONF_BACKUP" > "$WC_CONF"
+    else
+      log_warn "刪除新建立的 ${WC_CONF}……"
+      rm -f "$WC_CONF"
+    fi
+  fi
+  if [ "$_CLEANUP_PAGES" = 1 ]; then
+    log_warn "刪除 Pages 專案 ${PAGES_PROJECT}……"
+    npx wrangler pages project delete "$PAGES_PROJECT" --profile "$PROFILE" -y 2>&1 \
+      || log_warn "刪除 Pages 專案失敗，去 dashboard 手動刪：${PAGES_PROJECT}"
+  fi
+  if [ "$_CLEANUP_D1" = 1 ]; then
+    log_warn "刪除 D1「${D1_NAME}」……"
+    npx wrangler d1 delete "$D1_NAME" --profile "$PROFILE" -y 2>&1 \
+      || log_warn "刪除 D1 失敗，去 dashboard 手動刪：${D1_NAME}"
+  fi
+  if [ "$_CLEANUP_LOCAL_TRIPS" = 1 ]; then
+    log_warn "刪除 $LOCAL_TRIPS_DIR/$TRIP/……"
+    rm -rf "$LOCAL_TRIPS_DIR/$TRIP"
+  fi
+  log_err "已清乾淨，改完問題後直接重跑：scripts/trip-cli/new-trip.sh $TRIP"
+  exit "$ec"
+}
+trap cleanup_on_error ERR
+
+# 部分驗證失敗是用 log_err + exit 1 主動中止，不是指令失敗，不會觸發上面的
+# ERR trap——這幾處如果發生在資源已經建立之後，改成先跑一次清理再中止。
+die() {
+  log_err "$1"
+  cleanup_on_error 1
+}
 
 # --- 1. 選 Cloudflare profile ---
 log_info "目前機器上已有的 Cloudflare profile："
@@ -96,6 +152,7 @@ D1_OUTPUT="$(npx wrangler d1 create "$D1_NAME" --profile "$PROFILE" 2>&1)" || {
   exit 1
 }
 echo "$D1_OUTPUT"
+_CLEANUP_D1=1
 DATABASE_ID="$(echo "$D1_OUTPUT" | grep -oE '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' | head -1 || true)"
 if [ -z "$DATABASE_ID" ]; then
   log_err "沒能從輸出裡解析出 database_id，去上面的輸出手動複製，填進 local-trips/$TRIP/wrangler.toml。"
@@ -114,9 +171,11 @@ mark_all_migrations_applied "$D1_NAME" "$PROFILE"
 # --- 4. Pages 專案 ---
 log_info "建立 Pages 專案 ${PAGES_PROJECT}（production branch: ${PROD_BRANCH}）……"
 npx wrangler pages project create "$PAGES_PROJECT" --production-branch "$PROD_BRANCH" --profile "$PROFILE"
+_CLEANUP_PAGES=1
 
 # --- 5. local-trips/<trip>/ 設定檔 ---
 mkdir -p "$LOCAL_TRIPS_DIR/$TRIP/assets"
+_CLEANUP_LOCAL_TRIPS=1
 cat > "$LOCAL_TRIPS_DIR/$TRIP/wrangler.toml" <<TOML
 # ${TRIP} 的部署設定，由 scripts/trip-cli/new-trip.sh 產生。本機檔案，不進 git。
 name = "${PAGES_PROJECT}"
@@ -156,8 +215,7 @@ printf '請輸入這趟行程的共用密碼（PW_SHARED，必填，輸入時不
 read -rs PW_SHARED
 echo
 if [ -z "$PW_SHARED" ]; then
-  log_err "PW_SHARED 不能空白（沒有這個沒辦法登入）。"
-  exit 1
+  die "PW_SHARED 不能空白（沒有這個沒辦法登入）。"
 fi
 echo "$PW_SHARED" | npx wrangler pages secret put PW_SHARED --project-name "$PAGES_PROJECT" --profile "$PROFILE"
 
@@ -182,8 +240,7 @@ if [ "$SAME_ACCOUNT" = 1 ]; then
     VAPID_PUBLIC_KEY="$(grep -oE '"public" *: *"[^"]*"' "$VAPID_CACHE" | sed -E 's/.*"([^"]*)"$/\1/' || true)"
     VAPID_PRIVATE_KEY_JSON="$(grep -oE '"private" *: *\{[^{}]*\}' "$VAPID_CACHE" | sed -E 's/^"private" *: *//' || true)"
     if [ -z "$VAPID_PUBLIC_KEY" ] || [ -z "$VAPID_PRIVATE_KEY_JSON" ]; then
-      log_err "本機快取 $VAPID_CACHE 格式看起來壞了，手動檢查或刪掉這個檔案後重跑。"
-      exit 1
+      die "本機快取 $VAPID_CACHE 格式看起來壞了，手動檢查或刪掉這個檔案後重跑。"
     fi
   else
     log_info "本機沒有快取，請貼上這個帳號既有的 VAPID 金鑰（跟其他行程共用的那組）。"
@@ -217,13 +274,21 @@ log_ok "VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY 已設定。"
 BINDING="DB_$(echo "$TRIP" | tr '[:lower:]-' '[:upper:]_')"
 WC_CONF="$LOCAL_WORKER_CRON_DIR/$PROFILE/wrangler.toml"
 
+# 失敗時要嘛整份刪掉、要嘛還原成加 binding 之前的內容，先記下修改前的狀態。
+_WC_CONF_EXISTED=0
+_WC_CONF_BACKUP=""
+if [ -f "$WC_CONF" ]; then
+  _WC_CONF_EXISTED=1
+  _WC_CONF_BACKUP="$(cat "$WC_CONF")"
+fi
+
 if [ "$SAME_ACCOUNT" = 1 ]; then
   log_info "同帳號已有既有行程，在 ${WC_CONF} 加一組 D1 binding……"
   if [ ! -f "$WC_CONF" ]; then
     log_err "profile「${PROFILE}」底下已經有其他行程，但找不到 ${WC_CONF}。"
     log_err "這台機器可能是換過來的、沒有搬 local-worker-cron/（不像 local-trips/ 那樣"
     log_err "每趟行程各自一份，worker-cron 設定要另外手動搬過來），手動處理後重跑。"
-    exit 1
+    cleanup_on_error 1
   fi
   cat >> "$WC_CONF" <<WCTOML
 
@@ -232,6 +297,7 @@ binding = "${BINDING}"
 database_name = "${D1_NAME}"
 database_id = "${DATABASE_ID}"
 WCTOML
+  _CLEANUP_WC_CONF=1
   CRON_SECRET=""
 else
   log_info "全新帳號，建立 ${WC_CONF}……"
@@ -254,6 +320,7 @@ binding = "${BINDING}"
 database_name = "${D1_NAME}"
 database_id = "${DATABASE_ID}"
 WCTOML
+  _CLEANUP_WC_CONF=1
 fi
 
 # 部署前把 worker-cron/wrangler.toml 換成上面這份，部署完立刻換回 main 版本，
