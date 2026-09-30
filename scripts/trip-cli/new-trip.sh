@@ -180,7 +180,7 @@ if [ "$SAME_ACCOUNT" = 1 ]; then
   if [ -f "$VAPID_CACHE" ]; then
     log_info "本機快取找到上次存的 VAPID 金鑰（${VAPID_CACHE}），直接沿用。"
     VAPID_PUBLIC_KEY="$(grep -oE '"public" *: *"[^"]*"' "$VAPID_CACHE" | sed -E 's/.*"([^"]*)"$/\1/' || true)"
-    VAPID_PRIVATE_KEY_JSON="$(grep -oE '"private" *: *".*"' "$VAPID_CACHE" | sed -E 's/^"private" *: *//' || true)"
+    VAPID_PRIVATE_KEY_JSON="$(grep -oE '"private" *: *\{[^{}]*\}' "$VAPID_CACHE" | sed -E 's/^"private" *: *//' || true)"
     if [ -z "$VAPID_PUBLIC_KEY" ] || [ -z "$VAPID_PRIVATE_KEY_JSON" ]; then
       log_err "本機快取 $VAPID_CACHE 格式看起來壞了，手動檢查或刪掉這個檔案後重跑。"
       exit 1
