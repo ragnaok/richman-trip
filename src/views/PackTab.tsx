@@ -349,7 +349,7 @@ export default function PackTab() {
             </button>
           ))}
           {!showNewCat && (
-            <button type="button" className="btn btn-secondary" onClick={() => setShowNewCat(true)}>
+            <button type="button" className="edit-kind-chip" onClick={() => setShowNewCat(true)}>
               ＋分類
             </button>
           )}
