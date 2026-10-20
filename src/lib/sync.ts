@@ -96,6 +96,7 @@ function rowToPackItem(r: Record<string, unknown>): PackItem {
     name: String(r.name),
     owner: r.owner as PackItem['owner'],
     done: toBool(r.done),
+    sort_order: Number(r.sort_order ?? r.updated_at),
     updated_at: Number(r.updated_at),
     deleted: toBool(r.deleted) ? 1 : 0,
   }
@@ -124,6 +125,7 @@ function rowToCat(r: Record<string, unknown>): Cat {
   return {
     kind: r.kind as Cat['kind'],
     name: String(r.name),
+    sort_order: r.sort_order == null ? undefined : Number(r.sort_order),
     updated_at: Number(r.updated_at),
     deleted: toBool(r.deleted) ? 1 : 0,
   }

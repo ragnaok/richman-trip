@@ -31,6 +31,7 @@ CREATE TABLE pack_items (
   id TEXT PRIMARY KEY, cat TEXT NOT NULL, name TEXT NOT NULL,
   owner TEXT NOT NULL,                                      -- '共同' 或 members.role
   done INTEGER DEFAULT 0,
+  sort_order REAL,                                          -- 排序鍵：新增時 = Date.now()（沒排過就等於依新增時間），拖曳取鄰居中點
   updated_at INTEGER NOT NULL, deleted INTEGER DEFAULT 0);
 CREATE TABLE expenses (
   id TEXT PRIMARY KEY, title TEXT NOT NULL, cat TEXT NOT NULL,
@@ -45,9 +46,10 @@ CREATE TABLE expenses (
 CREATE TABLE payment_methods (                              -- 自訂付款方式（現金/信用卡是內建值，不進這張表）
   name TEXT PRIMARY KEY,
   updated_at INTEGER NOT NULL, deleted INTEGER DEFAULT 0);
-CREATE TABLE cats (kind TEXT, name TEXT, updated_at INTEGER, deleted INTEGER DEFAULT 0, PRIMARY KEY(kind,name));
+CREATE TABLE cats (kind TEXT, name TEXT, updated_at INTEGER, deleted INTEGER DEFAULT 0, sort_order REAL, PRIMARY KEY(kind,name));
                                                             -- kind='money'/'pack'（使用者自建分類）
                                                             -- deleted：分類管理面板刪除/改名用的墓碑列
+                                                            -- sort_order：目前只有 kind='pack' 用；NULL＝沒排過，維持出現順序
 CREATE TABLE settings (k TEXT PRIMARY KEY, v TEXT, updated_at INTEGER);   -- 匯率等共用設定
 CREATE TABLE hotels (                                       -- 設定頁「住宿地點」
   id TEXT PRIMARY KEY,

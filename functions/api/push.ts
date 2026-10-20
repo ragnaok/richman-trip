@@ -31,6 +31,7 @@ function num(v: unknown, fallback = 0): number {
 }
 
 // lat/lon 未設定要存 NULL：0,0 是真實座標，會被 weather.ts 誤判成「有設座標」。
+// sort_order 的 NULL 是「沒排過」，也不能被 0 取代。
 function numOrNull(v: unknown): number | null {
   if (v === undefined || v === null || v === '') return null
   const n = Number(v)
@@ -41,6 +42,9 @@ interface TableSpec {
   columns: string[]
   conflictKeys: string[]
   hasDeleted: boolean
+  /** 客戶端沒送值（NULL）時保留資料庫原值的欄位。舊版 App（PWA 快取還沒更新）推上來的
+   * 列沒有 sort_order，不保留的話會把 migration 補好的順序蓋成 NULL。 */
+  keepIfNull?: string[]
   /** row（客戶端 op payload）、now（伺服器收到請求當下的時間）→ 依 columns 順序的 bind 值。
    * updated_at 一律用 now，不採信客戶端送來的值——見檔案開頭註解。 */
   bind: (row: Row, now: number) => unknown[]
@@ -65,10 +69,11 @@ const TABLE_SPECS: Record<string, TableSpec> = {
     bind: (r, now) => [str(r.id), toInt01(r.visited), str(r.note) ?? '', str(r.photo), now, toInt01(r.deleted)],
   },
   pack_items: {
-    columns: ['id', 'cat', 'name', 'owner', 'done', 'updated_at', 'deleted'],
+    columns: ['id', 'cat', 'name', 'owner', 'done', 'sort_order', 'updated_at', 'deleted'],
     conflictKeys: ['id'],
     hasDeleted: true,
-    bind: (r, now) => [str(r.id), str(r.cat), str(r.name), str(r.owner), toInt01(r.done), now, toInt01(r.deleted)],
+    keepIfNull: ['sort_order'],
+    bind: (r, now) => [str(r.id), str(r.cat), str(r.name), str(r.owner), toInt01(r.done), numOrNull(r.sort_order), now, toInt01(r.deleted)],
   },
   expenses: {
     columns: [
@@ -86,10 +91,11 @@ const TABLE_SPECS: Record<string, TableSpec> = {
     ],
   },
   cats: {
-    columns: ['kind', 'name', 'updated_at', 'deleted'],
+    columns: ['kind', 'name', 'sort_order', 'updated_at', 'deleted'],
     conflictKeys: ['kind', 'name'],
     hasDeleted: true,
-    bind: (r, now) => [str(r.kind), str(r.name), now, toInt01(r.deleted)],
+    keepIfNull: ['sort_order'],
+    bind: (r, now) => [str(r.kind), str(r.name), numOrNull(r.sort_order), now, toInt01(r.deleted)],
   },
   settings: {
     columns: ['k', 'v', 'updated_at'],
@@ -135,7 +141,9 @@ function buildUpsertSql(table: string, spec: TableSpec): string {
   const cols = spec.columns.join(',')
   const placeholders = spec.columns.map(() => '?').join(',')
   const updateCols = spec.columns.filter((c) => !spec.conflictKeys.includes(c))
-  const setClause = updateCols.map((c) => `${c}=excluded.${c}`).join(', ')
+  const setClause = updateCols
+    .map((c) => (spec.keepIfNull?.includes(c) ? `${c}=COALESCE(excluded.${c}, ${table}.${c})` : `${c}=excluded.${c}`))
+    .join(', ')
   const conflictTarget = spec.conflictKeys.join(',')
   return (
     `INSERT INTO ${table} (${cols}) VALUES (${placeholders}) ` +
