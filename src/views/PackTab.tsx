@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import type { PointerEvent as ReactPointerEvent, CSSProperties } from 'react'
 import { CheckSquare, Square, PencilSimple, SlidersHorizontal, ArrowsDownUp, DotsSixVertical } from '@phosphor-icons/react'
 import { useStore, useCatNames, useMemberNames, sortPackItems } from '../lib/store'
 import type { PackItem } from '../lib/types'
@@ -25,8 +25,14 @@ export default function PackTab() {
   const movePackItem = useStore((s) => s.movePackItem)
   const reorderPackCats = useStore((s) => s.reorderPackCats)
 
+  // 排序模式：進入時暫時顯示全部項目（不受持有人篩選影響），離開後篩選自然還原——
+  // 篩選中拖曳的話，插入位置的鄰居可能是被藏起來的項目，使用者看不到自己放到哪。
+  const [sorting, setSorting] = useState(false)
+
   const { toast, showToast } = useToast()
+  // 排序中停用下拉更新：往下拖的手勢會被它搶走。
   const { containerRef, pull, status } = usePullToRefresh({
+    enabled: !sorting,
     onRefresh: () => syncPull().then(() => syncPush()),
     onDone: () => showToast('已更新'),
   })
@@ -43,9 +49,6 @@ export default function PackTab() {
   const items = packItems.filter((i) => i.deleted !== 1)
   const catNames = useCatNames('pack')
 
-  // 排序模式：進入時暫時顯示全部項目（不受持有人篩選影響），離開後篩選自然還原——
-  // 篩選中拖曳的話，插入位置的鄰居可能是被藏起來的項目，使用者看不到自己放到哪。
-  const [sorting, setSorting] = useState(false)
   const filteredItems = items.filter(
     (i) => sorting || i.owner === SHARED_OWNER || packOwner === ALL_OWNER_FILTER || i.owner === packOwner,
   )
@@ -81,10 +84,21 @@ export default function PackTab() {
 
   // 排序模式拖曳：手刻 pointer events（理由同 ItineraryTab：HTML5 draggable 在手機觸控
   // 不會觸發）。把手只在排序模式才出現，所以不需要長按門檻，按下就開始拖。
-  // 放置位置每次 move 都從 DOM 即時量：data-cat / data-item-id 標在分類區塊與項目列上。
+  //
+  // 被拖的元素用 position:fixed 浮在手指上（起點的 rect 在按下當下量好），原本的位置由
+  // 一個空白佔位列（.pack-drop-slot）取代，並隨放置位置移動，所以不需要處理捲動位移、
+  // 也看得出放開後會落在哪。放置位置每次 move 都從 DOM 即時量：data-cat / data-item-id
+  // 標在分類區塊與項目列上。
+  interface DragBase {
+    pointerY: number
+    grabOffset: number // 按下位置距被拖元素頂端
+    left: number
+    width: number
+    height: number
+  }
   type Drag =
-    | { kind: 'item'; id: PackItem['id']; startY: number; startScroll: number; deltaY: number; drop: { cat: string; beforeId: PackItem['id'] | null } }
-    | { kind: 'cat'; id: string; startY: number; startScroll: number; deltaY: number; drop: { beforeCat: string | null } }
+    | (DragBase & { kind: 'item'; id: PackItem['id']; drop: { cat: string; beforeId: PackItem['id'] | null } })
+    | (DragBase & { kind: 'cat'; id: string; drop: { beforeCat: string | null } })
   const [drag, setDrag] = useState<Drag | null>(null)
   const dragRef = useRef<{ pointerId: number } | null>(null)
 
@@ -117,17 +131,27 @@ export default function PackTab() {
     return { cat, beforeId: hit?.dataset.itemId ?? null }
   }
 
-  function startDrag(e: ReactPointerEvent<HTMLElement>, next: Omit<Drag, 'startY' | 'startScroll' | 'deltaY' | 'drop'> & { kind: Drag['kind']; id: string }) {
+  function startDrag(e: ReactPointerEvent<HTMLElement>, kind: Drag['kind'], id: string) {
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
     dragRef.current = { pointerId: e.pointerId }
-    const startScroll = containerRef.current?.scrollTop ?? 0
-    const base = { startY: e.clientY, startScroll, deltaY: 0 }
-    setDrag(
-      next.kind === 'item'
-        ? { ...base, kind: 'item', id: next.id, drop: { cat: items.find((i) => String(i.id) === next.id)?.cat ?? '', beforeId: null } }
-        : { ...base, kind: 'cat', id: next.id, drop: { beforeCat: null } },
-    )
+    const el = e.currentTarget.closest<HTMLElement>(kind === 'cat' ? '[data-cat]' : '[data-item-id]')
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    // 浮動元素比原本寬 8px（左右各 4px 的內距，見 .is-dragging），拿起來才有「浮起」的感覺。
+    const base: DragBase = { pointerY: e.clientY, grabOffset: e.clientY - rect.top, left: rect.left - 4, width: rect.width + 8, height: rect.height }
+    if (kind === 'item') {
+      const item = items.find((i) => String(i.id) === id)
+      if (!item) return
+      const siblings = sortPackItems(filteredItems.filter((i) => i.cat === item.cat))
+      const next = siblings[siblings.findIndex((i) => i.id === item.id) + 1]
+      setDrag({ ...base, kind: 'item', id: item.id, drop: { cat: item.cat, beforeId: next?.id ?? null } })
+    } else {
+      // 分類拖曳時項目會收起來（見下方 render），浮動區塊只剩標題，高度要重量。
+      const kicker = el.querySelector('.pack-cat-kicker')?.getBoundingClientRect().height ?? rect.height
+      const next = catNames[catNames.indexOf(id) + 1]
+      setDrag({ ...base, height: kicker, kind: 'cat', id, drop: { beforeCat: next ?? null } })
+    }
   }
 
   function moveDrag(e: ReactPointerEvent<HTMLElement>) {
@@ -140,8 +164,7 @@ export default function PackTab() {
       if (e.clientY < rect.top + 60) root.scrollTop -= 12
       else if (e.clientY > rect.bottom - 60) root.scrollTop += 12
     }
-    const deltaY = e.clientY - drag.startY + ((root?.scrollTop ?? 0) - drag.startScroll)
-    setDrag({ ...drag, deltaY, drop: computeDrop(drag, e.clientY) } as Drag)
+    setDrag({ ...drag, pointerY: e.clientY, drop: computeDrop(drag, e.clientY) } as Drag)
   }
 
   function endDrag(e: ReactPointerEvent<HTMLElement>) {
@@ -177,21 +200,30 @@ export default function PackTab() {
     onClick: (e: React.MouseEvent) => e.stopPropagation(),
   }
 
+  const floatingStyle = (d: Drag): CSSProperties => ({
+    position: 'fixed',
+    top: d.pointerY - d.grabOffset,
+    left: d.left,
+    width: d.width,
+    boxSizing: 'border-box',
+  })
+
   return (
     <div className="pack" ref={containerRef}>
       <PullToRefresh status={status} pull={pull} />
 
-      <div className="pack-head">
+      <div className="money-header-row">
         <h2 className="spots-h2">行李</h2>
         <button
           type="button"
-          className={`btn ${sorting ? 'btn-primary' : 'btn-secondary'}`}
+          className={`money-header-btn${sorting ? ' is-active' : ''}`}
           onClick={() => {
             setSorting((v) => !v)
             setDrag(null)
           }}
         >
-          <ArrowsDownUp size={14} weight="duotone" /> {sorting ? '完成排序' : '排序'}
+          <ArrowsDownUp size={14} weight="duotone" />
+          {sorting ? '完成排序' : '排序'}
         </button>
       </div>
       <p className="spots-sub">
@@ -220,83 +252,88 @@ export default function PackTab() {
       {catNames.map((cat) => {
         const catItems = sortPackItems(filteredItems.filter((i) => i.cat === cat))
         const catDone = catItems.filter((i) => i.done).length
-        const catDragging = drag?.kind === 'cat' && drag.id === cat
-        const dropEnd = drag?.kind === 'item' && drag.drop.cat === cat && drag.drop.beforeId === null
+        const catDrag = drag?.kind === 'cat' ? drag : null
+        const catDragging = catDrag?.id === cat
+        // 排分類時項目全部收起，不然長清單根本拖不動。
+        const collapsed = catDrag !== null
+        const itemDrag = drag?.kind === 'item' ? drag : null
+        const slot = itemDrag && <div className="pack-drop-slot" style={{ height: itemDrag.height }} />
         return (
           <div key={cat}>
-          {drag?.kind === 'cat' && drag.drop.beforeCat === cat && <div className="pack-drop-line" />}
-          <div
-            data-cat={cat}
-            className={`pack-cat${catDragging ? ' is-dragging' : ''}`}
-            style={catDragging && drag ? { transform: `translateY(${drag.deltaY}px)` } : undefined}
-          >
-            <div className="pack-cat-kicker">
-              {sorting && (
-                <span
-                  className="pack-drag-handle"
-                  aria-label={`拖曳排序分類 ${cat}`}
-                  onPointerDown={(e) => startDrag(e, { kind: 'cat', id: cat })}
-                  {...handleProps}
-                >
-                  <DotsSixVertical size={16} weight="bold" />
-                </span>
-              )}
-              {cat} · {catDone} / {catItems.length}
+            {catDrag?.drop.beforeCat === cat && <CatSlot />}
+            <div
+              data-cat={cat}
+              className={`pack-cat${catDragging ? ' is-dragging' : ''}`}
+              style={catDragging && catDrag ? floatingStyle(catDrag) : undefined}
+            >
+              <div className="pack-cat-kicker">
+                {sorting && (
+                  <span
+                    className="pack-drag-handle"
+                    aria-label={`拖曳排序分類 ${cat}`}
+                    onPointerDown={(e) => startDrag(e, 'cat', cat)}
+                    {...handleProps}
+                  >
+                    <DotsSixVertical size={16} weight="bold" />
+                  </span>
+                )}
+                {cat} · {catDone} / {catItems.length}
+              </div>
+              {!collapsed &&
+                (catItems.length === 0 && !(itemDrag?.drop.cat === cat) ? (
+                  <p className="pack-empty">還沒有項目</p>
+                ) : (
+                  catItems.map((item) => {
+                    const itemDragging = itemDrag?.id === item.id
+                    return (
+                      <div key={item.id}>
+                        {itemDrag?.drop.beforeId === item.id && itemDrag.id !== item.id && slot}
+                        <div
+                          data-item-id={String(item.id)}
+                          className={`pack-item-row${itemDragging ? ' is-dragging' : ''}`}
+                          style={itemDragging && itemDrag ? floatingStyle(itemDrag) : undefined}
+                          onClick={sorting ? undefined : () => togglePackDone(item.id)}
+                        >
+                          {sorting ? (
+                            <span
+                              className="pack-drag-handle"
+                              aria-label={`拖曳排序 ${item.name}`}
+                              onPointerDown={(e) => startDrag(e, 'item', String(item.id))}
+                              {...handleProps}
+                            >
+                              <DotsSixVertical size={16} weight="bold" />
+                            </span>
+                          ) : item.done ? (
+                            <CheckSquare size={19} weight="duotone" color="var(--color-accent)" />
+                          ) : (
+                            <Square size={19} weight="duotone" />
+                          )}
+                          <span className={`pack-item-name${item.done ? ' is-done' : ''}`}>{item.name}</span>
+                          <span className="tag tag-neutral pack-item-owner">{item.owner}</span>
+                          {!sorting && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost pack-item-edit-btn"
+                              aria-label={`編輯 ${item.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openPackItemEdit(item.id)
+                              }}
+                            >
+                              <PencilSimple size={15} weight="duotone" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })
+                ))}
+              {!collapsed && itemDrag?.drop.cat === cat && itemDrag.drop.beforeId === null && slot}
             </div>
-            {catItems.length === 0 ? (
-              <p className="pack-empty">還沒有項目</p>
-            ) : (
-              catItems.map((item) => {
-                const itemDragging = drag?.kind === 'item' && drag.id === item.id
-                return (
-                <div key={item.id}>
-                {drag?.kind === 'item' && drag.drop.beforeId === item.id && <div className="pack-drop-line" />}
-                <div
-                  data-item-id={String(item.id)}
-                  className={`pack-item-row${itemDragging ? ' is-dragging' : ''}`}
-                  style={itemDragging && drag ? { transform: `translateY(${drag.deltaY}px) scale(1.03)` } : undefined}
-                  onClick={sorting ? undefined : () => togglePackDone(item.id)}
-                >
-                  {sorting ? (
-                    <span
-                      className="pack-drag-handle"
-                      aria-label={`拖曳排序 ${item.name}`}
-                      onPointerDown={(e) => startDrag(e, { kind: 'item', id: String(item.id) })}
-                      {...handleProps}
-                    >
-                      <DotsSixVertical size={16} weight="bold" />
-                    </span>
-                  ) : item.done ? (
-                    <CheckSquare size={19} weight="duotone" color="var(--color-accent)" />
-                  ) : (
-                    <Square size={19} weight="duotone" />
-                  )}
-                  <span className={`pack-item-name${item.done ? ' is-done' : ''}`}>{item.name}</span>
-                  <span className="tag tag-neutral pack-item-owner">{item.owner}</span>
-                  {!sorting && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost pack-item-edit-btn"
-                      aria-label={`編輯 ${item.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openPackItemEdit(item.id)
-                      }}
-                    >
-                      <PencilSimple size={15} weight="duotone" />
-                    </button>
-                  )}
-                </div>
-                </div>
-                )
-              })
-            )}
-            {dropEnd && <div className="pack-drop-line" />}
-          </div>
           </div>
         )
       })}
-      {drag?.kind === 'cat' && drag.drop.beforeCat === null && <div className="pack-drop-line" />}
+      {drag?.kind === 'cat' && drag.drop.beforeCat === null && <CatSlot />}
 
       {!sorting && (
       <div className="pack-add">
@@ -367,6 +404,18 @@ export default function PackTab() {
       )}
 
       {toast && <Toast message={toast.message} />}
+    </div>
+  )
+}
+
+/** 分類拖曳時的空白佔位：結構跟收起後的 .pack-cat 一樣，高度自然相同。 */
+function CatSlot() {
+  return (
+    <div className="pack-cat pack-drop-slot" aria-hidden="true">
+      <div className="pack-cat-kicker" style={{ visibility: 'hidden' }}>
+        <span className="pack-drag-handle" />
+        &nbsp;
+      </div>
     </div>
   )
 }

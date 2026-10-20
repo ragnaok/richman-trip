@@ -3158,11 +3158,9 @@ body {
 }
 
 /* --- 行李排序模式（拖曳手勢寫法同 .itin-plan-drag-handle，理由見該處註解） --- */
-.pack-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+.money-header-btn.is-active {
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .pack-drag-handle {
@@ -3183,19 +3181,22 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* 被拖的元素用 position:fixed 浮在手指上（位置由 PackTab 的 inline style 給），
+   原位由 .pack-drop-slot 佔住。 */
 .pack-cat.is-dragging,
 .pack-item-row.is-dragging {
-  position: relative;
-  z-index: 1;
+  z-index: 3;
+  padding-left: 4px;
+  padding-right: 4px;
   background: var(--color-bg);
   box-shadow: var(--shadow-md);
   user-select: none;
   -webkit-user-select: none;
 }
 
-/* 插入位置提示線：放在被插入的列「前面」，或分類最後一項的後面。 */
-.pack-drop-line {
-  height: 2px;
-  margin: -1px 0;
-  background: var(--color-accent);
+/* 空白佔位列：放開後會落在這裡。 */
+.pack-drop-slot {
+  box-sizing: border-box;
+  border: 1px dashed var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
 }
