@@ -103,12 +103,16 @@ interface Store {
   reorderPlan: (id: PlanItem['id'], order: number) => void
   deletePlan: (id: PlanItem['id']) => void
   deletePlansForDay: (day: string) => void
-  upsertPackItem: (item: Omit<PackItem, 'updated_at' | 'deleted'>) => void
+  upsertPackItem: (item: Omit<PackItem, 'updated_at' | 'deleted' | 'sort_order'> & { sort_order?: number }) => void
+  /** 排序模式放開時呼叫：把項目移到 cat 分類裡 beforeId 那一項的前面（null＝該分類最後）。 */
+  movePackItem: (id: PackItem['id'], cat: string, beforeId: PackItem['id'] | null) => void
   togglePackDone: (id: PackItem['id']) => void
   deletePackItem: (id: PackItem['id']) => void
   upsertExpense: (expense: Omit<Expense, 'updated_at' | 'deleted'>) => void
   deleteExpense: (id: Expense['id']) => void
   upsertCat: (cat: Omit<Cat, 'updated_at' | 'deleted'>) => void
+  /** 排序模式調整分類順序：names 是畫面上完整的分類順序，只寫入順序有變的列。 */
+  reorderPackCats: (names: string[]) => void
   renameCat: (kind: Cat['kind'], from: string, to: string) => void
   deleteCat: (kind: Cat['kind'], name: string) => void
   upsertSpotMeta: (meta: Partial<SpotMeta> & { id: string }) => void
@@ -138,6 +142,14 @@ function maxOrderForDay(plans: PlanItem[], day: string): number {
   return plans
     .filter((p) => p.day === day && p.deleted !== 1)
     .reduce((max, p) => Math.max(max, Number.isFinite(p.order) ? p.order : 0), 0)
+}
+
+// 兩個相鄰 sort_order 的間距小於這個值就重編整個分類，見 movePackItem。
+const MIN_ORDER_GAP = 0.01
+
+/** 行李項目的顯示順序：sort_order 小的在前，同值用 id 定序，各裝置才會排得一樣。 */
+export function sortPackItems(items: PackItem[]): PackItem[] {
+  return [...items].sort((a, b) => a.sort_order - b.sort_order || String(a.id).localeCompare(String(b.id)))
 }
 
 function upsertCatRow(list: Cat[], row: Cat): Cat[] {
@@ -197,7 +209,7 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async hydrate() {
-    const [plansRaw, packItems, expenses, cats, settingsRows, spotsMetaRows, customSpots, members, hotels, paymentMethods] =
+    const [plansRaw, packItemsRaw, expenses, cats, settingsRows, spotsMetaRows, customSpots, members, hotels, paymentMethods] =
       await Promise.all([
         db.getAll('plans'),
         db.getAll('pack_items'),
@@ -220,6 +232,17 @@ export const useStore = create<Store>((set, get) => ({
       if (Number.isFinite(p.order)) return p
       const fixed: PlanItem = { ...p, order: timeToMinutes(p.t) ?? 1440 }
       void db.putRow('plans', fixed)
+      return fixed
+    })
+
+    // sort_order 是後來才加的欄位：migration 會把 D1 舊列補值並調新 updated_at 讓裝置重拉，
+    // 但 migration 到 client 部署之間若已經同步過（since 已經跳過），本機會停在沒有
+    // sort_order 的狀態。這裡用 updated_at 先補一個，只寫本機、不 enqueue，理由同上面的
+    // plans.order。
+    const packItems = packItemsRaw.map((p) => {
+      if (Number.isFinite(p.sort_order)) return p
+      const fixed: PackItem = { ...p, sort_order: p.updated_at }
+      void db.putRow('pack_items', fixed)
       return fixed
     })
 
@@ -340,10 +363,58 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   upsertPackItem: (item) => {
-    const row: PackItem = { ...item, updated_at: Date.now(), deleted: 0 }
+    const existing = get().entities.packItems.find((p) => p.id === item.id)
+    // 新項目 sort_order = 新增時間，「沒排過就依新增時間」不用另外分支；既有項目沿用原值。
+    const sort_order = item.sort_order ?? existing?.sort_order ?? Date.now()
+    const row: PackItem = { ...item, sort_order, updated_at: Date.now(), deleted: 0 }
     set((state) => ({
       entities: { ...state.entities, packItems: upsertById(state.entities.packItems, row) },
     }))
+    void db.putRow('pack_items', row)
+    void enqueue('pack_items', row)
+  },
+
+  movePackItem: (id, cat, beforeId) => {
+    const state = get().entities.packItems
+    const item = state.find((p) => p.id === id)
+    if (!item) return
+    // 鄰居一律看該分類全部項目，不受持有人篩選影響（排序模式本來就顯示全部）。
+    const siblings = sortPackItems(state.filter((p) => p.deleted !== 1 && p.cat === cat && p.id !== id))
+    const afterIdx = beforeId === null ? siblings.length : siblings.findIndex((p) => p.id === beforeId)
+    if (afterIdx === -1) return
+    const before = siblings[afterIdx - 1]
+    const after = siblings[afterIdx]
+
+    if (item.cat === cat) {
+      const current = sortPackItems(state.filter((p) => p.deleted !== 1 && p.cat === cat))
+      const i = current.findIndex((p) => p.id === id)
+      if (current[i - 1]?.id === before?.id && current[i + 1]?.id === after?.id) return // 位置沒變
+    }
+
+    // 中點會越切越小：兩個 ms 時間戳相隔 1 秒，對半切約 20 次就逼近浮點精度。間距太小
+    // 就把整個分類重編成等距序號，一次寫入，往後又有空間可以切。
+    if (before && after && after.sort_order - before.sort_order < MIN_ORDER_GAP) {
+      const ordered = [...siblings.slice(0, afterIdx), item, ...siblings.slice(afterIdx)]
+      const base = Date.now()
+      ordered.forEach((p, i) => {
+        const next: PackItem = { ...p, cat, sort_order: base + i * 1000, updated_at: Date.now() }
+        set((s) => ({ entities: { ...s.entities, packItems: upsertById(s.entities.packItems, next) } }))
+        void db.putRow('pack_items', next)
+        void enqueue('pack_items', next)
+      })
+      return
+    }
+
+    const sort_order =
+      before && after
+        ? (before.sort_order + after.sort_order) / 2
+        : before
+          ? Math.max(Date.now(), before.sort_order + 1) // 放最後：不能比之後新增的項目（Date.now()）更晚
+          : after
+            ? after.sort_order - 1000
+            : Date.now()
+    const row: PackItem = { ...item, cat, sort_order, updated_at: Date.now() }
+    set((s) => ({ entities: { ...s.entities, packItems: upsertById(s.entities.packItems, row) } }))
     void db.putRow('pack_items', row)
     void enqueue('pack_items', row)
   },
@@ -387,7 +458,11 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   upsertCat: (cat) => {
-    const row: Cat = { ...cat, updated_at: Date.now(), deleted: 0 }
+    // 行李分類一旦有人排過序（任何一個有 sort_order），後來新建的分類要排最後，不然
+    // 沒有 sort_order 的新分類會被當成「沒排過」而插在中間。從沒排過就維持沒有值。
+    const sorted = get().entities.cats.some((c) => c.kind === 'pack' && c.deleted !== 1 && c.sort_order !== undefined)
+    const sort_order = cat.sort_order ?? (cat.kind === 'pack' && sorted ? Date.now() : undefined)
+    const row: Cat = { ...cat, sort_order, updated_at: Date.now(), deleted: 0 }
     set((state) => ({ entities: { ...state.entities, cats: upsertCatRow(state.entities.cats, row) } }))
     void db.putRow('cats', row)
     void enqueue('cats', row)
@@ -408,7 +483,9 @@ export const useStore = create<Store>((set, get) => ({
         if (exp.deleted !== 1 && exp.cat === from) get().upsertExpense({ ...exp, cat: name })
       }
     }
-    get().upsertCat({ kind, name })
+    // 新名字繼承舊名字的順序，不然改名會把分類丟到最後。
+    const fromOrder = state.entities.cats.find((c) => c.kind === kind && c.name === from)?.sort_order
+    get().upsertCat({ kind, name, sort_order: fromOrder })
     const tombstone: Cat = { kind, name: from, deleted: 1, updated_at: Date.now() }
     set((s) => ({ entities: { ...s.entities, cats: upsertCatRow(s.entities.cats, tombstone) } }))
     void db.putRow('cats', tombstone)
@@ -431,6 +508,15 @@ export const useStore = create<Store>((set, get) => ({
     set((s) => ({ entities: { ...s.entities, cats: upsertCatRow(s.entities.cats, tombstone) } }))
     void db.putRow('cats', tombstone)
     void enqueue('cats', tombstone)
+  },
+
+  reorderPackCats: (names) => {
+    names.forEach((name, i) => {
+      const order = i + 1
+      const existing = get().entities.cats.find((c) => c.kind === 'pack' && c.name === name && c.deleted !== 1)
+      if (existing?.sort_order === order) return
+      get().upsertCat({ kind: 'pack', name, sort_order: order })
+    })
   },
 
   upsertSpotMeta: (meta) => {
@@ -650,6 +736,11 @@ export function useCatNames(kind: Cat['kind']): string[] {
       if (deletedNames.has(name) || seen.has(name)) continue
       seen.add(name)
       list.push(name)
+    }
+    if (kind === 'pack') {
+      // 穩定排序：沒排過的分類（Infinity）維持上面的出現順序、排在排過的後面。
+      const order = new Map(cats.filter((c) => c.kind === 'pack' && c.deleted !== 1).map((c) => [c.name, c.sort_order ?? Infinity]))
+      list.sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity) || 0)
     }
     return list
   }, [cats, packItems, expenses, kind])

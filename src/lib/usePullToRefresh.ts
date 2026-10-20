@@ -16,29 +16,36 @@ const MIN_REFRESH_MS = 950
 export function usePullToRefresh({
   onRefresh,
   onDone,
+  enabled = true,
 }: {
   /** 實際的更新工作（重抓天氣/定位）。 */
   onRefresh: () => void | Promise<void>
   /** 收起動畫結束後才呼叫（例如吐 toast），跟 onRefresh 分開是為了讓 toast 在畫面收起後才出現。 */
   onDone?: () => void
+  /** false 時完全不接手下拉手勢（例如行李排序模式：拖曳會跟下拉更新搶手勢）。 */
+  enabled?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [pull, setPull] = useState(0)
   const [status, setStatus] = useState<PullStatus>('idle')
 
   // 用 ref 保存目前值，讓 touch 事件 handler 不必因為 pull/status 變化而重新綁定。
-  const liveRef = useRef({ startY: null as number | null, pulling: false, pull: 0, status: 'idle' as PullStatus })
+  const liveRef = useRef({ startY: null as number | null, pulling: false, pull: 0, status: 'idle' as PullStatus, enabled })
   useEffect(() => {
     liveRef.current.pull = pull
     liveRef.current.status = status
-  }, [pull, status])
+    liveRef.current.enabled = enabled
+  }, [pull, status, enabled])
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
 
     function onTouchStart(e: TouchEvent) {
-      if (liveRef.current.status === 'refreshing') return
+      if (liveRef.current.status === 'refreshing' || !liveRef.current.enabled) {
+        liveRef.current.startY = null
+        return
+      }
       if (el!.scrollTop > 0) {
         liveRef.current.startY = null
         return

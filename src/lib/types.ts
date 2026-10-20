@@ -80,6 +80,7 @@ export interface PackItem {
   name: string
   owner: Owner
   done: boolean
+  sort_order: number // 排序鍵：新增時 = Date.now()（沒排過就等於依新增時間），拖曳取前後鄰居中點，見 store.ts movePackItem
   updated_at: number
   deleted: 0 | 1
 }
@@ -129,6 +130,7 @@ export interface PaymentMethod {
 export interface Cat {
   kind: 'money' | 'pack'
   name: string
+  sort_order?: number // 目前只有 pack 分類用；沒值＝沒排過，維持出現順序
   updated_at: number
   deleted: 0 | 1
 }
