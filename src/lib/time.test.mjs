@@ -2,7 +2,7 @@
 // Node 22 對 TypeScript 有內建 type-stripping，可以直接 import .ts 檔。
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { tkey, sortPlans } from './time.ts'
+import { tkey, sortPlans, formatExpenseDate } from './time.ts'
 
 test('tkey：合法 HH:MM 補零成自身', () => {
   assert.equal(tkey('09:00'), '09:00')
@@ -31,4 +31,15 @@ test('sortPlans：不改動原陣列（回傳新陣列）', () => {
   const sorted = sortPlans(plans)
   assert.notEqual(sorted, plans)
   assert.equal(plans[0].t, '17:15') // 原陣列順序不變
+})
+
+test('formatExpenseDate：月、日一律補成兩位數，每個日期一樣寬', () => {
+  assert.equal(formatExpenseDate('2026-09-08'), '09/08（二）')
+  assert.equal(formatExpenseDate('2026-10-25'), '10/25（日）')
+  assert.equal(formatExpenseDate('2026-09-08').length, formatExpenseDate('2026-12-25').length)
+})
+
+test('formatExpenseDate：不合法日期原樣退回、空字串回空字串', () => {
+  assert.equal(formatExpenseDate('不是日期'), '不是日期')
+  assert.equal(formatExpenseDate(''), '')
 })

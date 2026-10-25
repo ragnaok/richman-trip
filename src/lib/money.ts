@@ -114,6 +114,36 @@ export function shareTwd(
   return twd(e, rate) / Math.max(1, among.length)
 }
 
+/** 這個人有沒有在這筆支出的分攤名單內（沒指定 splitAmong 視同全員，見 splitOf）。 */
+export function isInSplit(e: Pick<Expense, 'splitAmong'>, person: string, allMembers: string[]): boolean {
+  return splitOf(e, allMembers).includes(person)
+}
+
+/** 某人在這筆支出的分攤額，**維持原幣別**（日幣支出的分攤仍是日幣）：不在分攤名單內是 0；
+ * 有 splitAmounts 覆寫值就用覆寫值，否則這筆原幣總額平分給分攤名單。
+ * 「我的消費」模式下，總額、日幣／現金／台幣三欄都吃這個——三欄是按幣別各自加總，
+ * 不能先換成台幣再加。 */
+export function shareNative(
+  e: Pick<Expense, 'amt' | 'splitAmong' | 'splitAmounts'>,
+  person: string,
+  allMembers: string[],
+): number {
+  const among = splitOf(e, allMembers)
+  if (!among.includes(person)) return 0
+  return e.splitAmounts?.[person] ?? e.amt / Math.max(1, among.length)
+}
+
+/** shareNative 換算成台幣。跟 shareTwd 的差別：這個會先確認有沒有在分攤名單內
+ * （shareTwd 只管算「如果有分攤是多少」，名單判斷留給呼叫端，見 settle()）。 */
+export function shareOfTwd(
+  e: Pick<Expense, 'cur' | 'amt' | 'splitAmong' | 'splitAmounts'>,
+  person: string,
+  allMembers: string[],
+  rate: number,
+): number {
+  return twd({ cur: e.cur, amt: shareNative(e, person, allMembers) }, rate)
+}
+
 export interface SettleLine {
   from: string
   to: string
