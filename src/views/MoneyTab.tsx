@@ -53,7 +53,7 @@ const SORT_OPTIONS: ExpSortKey[] = ['date', 'amt', 'title']
  *
  * 「與我相關 → 我的消費」是篩選之一：只留目前身分有分攤的支出，並把總額、日幣／現金／台幣
  * 三欄、圖表全部改成「我的分攤額」口徑（明細列仍顯示整筆金額，所以加起來不會等於總額）。
- * 每人卡的「分攤」永遠是各人在目前這批支出裡該負擔的金額，跟「已付」對照用。
+ * 每人卡的「消費」永遠是各人在目前這批支出裡該負擔的金額，跟「已付」對照用。
  *
  * 結算依 splitAmong 計算（見 lib/money.ts settle()），代購也算進去；只有一位身份時
  * 完全不顯示已付卡／結算按鈕——這兩者只有多人才有意義。
@@ -132,7 +132,7 @@ export default function MoneyTab() {
   const grandTotal = effItems.reduce((sum, e) => sum + amtTwd(e), 0)
 
   const paidTwdOf = (person: string) => effItems.reduce((sum, e) => sum + (twd({ cur: e.cur, amt: payersOf(e)[person] ?? 0 }, rate)), 0)
-  // 每人卡的「分攤」：這些支出裡各人該負擔多少，跟「已付」對照就看得出誰多付、誰少付。
+  // 每人卡的「消費」：這些支出裡各人該負擔（分攤）多少，跟「已付」對照就看得出誰多付、誰少付。
   const shareTwdSumOf = (person: string) => effItems.reduce((sum, e) => sum + shareOfTwd(e, person, memberNames, rate), 0)
   const paidJpyOf = (person: string) =>
     effItems.filter((e) => e.cur === 'JPY').reduce((sum, e) => sum + (payersOf(e)[person] ?? 0), 0)
@@ -319,7 +319,7 @@ export default function MoneyTab() {
                   <div key={payer} className={`money-payer-card${isLastOdd ? ' money-payer-card--full' : ''}`}>
                     <div className="money-payer-name">{payer} 已付</div>
                     <div className="money-payer-amount">{formatTWD(paidTwdOf(payer))}</div>
-                    <div className="money-payer-sub">分攤 {formatTWD(shareTwdSumOf(payer))}</div>
+                    <div className="money-payer-sub">消費 {formatTWD(shareTwdSumOf(payer))}</div>
                     <div className="money-payer-sub">
                       {jpySum > 0 ? `含${currencyName} ${currencySymbol}${jpySum.toLocaleString('zh-Hant')}` : '全為台幣支付'}
                     </div>
@@ -375,7 +375,10 @@ export default function MoneyTab() {
                 style={{ filter: isOtherSelected ? 'grayscale(1)' : 'none' }}
                 onClick={() => toggleExpDate(day)}
               >
-                <span className="money-cat-name" style={{ fontWeight: isSelected ? 600 : 400, opacity: dimOpacity }}>
+                <span
+                  className="money-cat-name money-cat-name--date"
+                  style={{ fontWeight: isSelected ? 600 : 400, opacity: dimOpacity }}
+                >
                   {formatExpenseDate(day)}
                 </span>
                 <span className="money-cat-bar" style={{ opacity: dimOpacity }}>
