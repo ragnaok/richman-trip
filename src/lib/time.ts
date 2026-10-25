@@ -86,13 +86,16 @@ export function todayISO(now: Date = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
-/** 記帳每日花費／明細列的日期顯示，例如 '9/8（二）'。spent_on 是 'YYYY-MM-DD'，
- * 不合法時原樣退回，避免整列爆掉。 */
+/** 記帳每日花費／明細列的日期顯示，例如 '09/08（二）'。月、日一律補成兩位數，每個日期
+ * 一樣寬，圖表的名稱欄才能量好固定寬度。spent_on 是 'YYYY-MM-DD'，不合法時原樣退回，
+ * 避免整列爆掉。 */
 export function formatExpenseDate(iso: string): string {
   if (!iso) return ''
   const d = new Date(`${iso}T00:00:00`)
   if (Number.isNaN(d.getTime())) return iso
-  return `${d.getMonth() + 1}/${d.getDate()}（${WD_SHORT[d.getDay()]}）`
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${mm}/${dd}（${WD_SHORT[d.getDay()]}）`
 }
 
 /** 從 tripStart/tripEnd 展開成逐日的 { d, wd } 清單，欄位名刻意跟 DAYINFO 一致，
