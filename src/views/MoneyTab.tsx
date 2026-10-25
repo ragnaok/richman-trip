@@ -25,6 +25,9 @@ import {
   methodOrder,
   methodColor,
   settle,
+  isInSplit,
+  shareNative,
+  shareOfTwd,
 } from '../lib/money'
 import { formatExpenseDate } from '../lib/time'
 import { usePullToRefresh } from '../lib/usePullToRefresh'
@@ -48,6 +51,10 @@ const SORT_OPTIONS: ExpSortKey[] = ['date', 'amt', 'title']
  * 分類篩選標籤是分開的兩件事：篩選 sheet 的條件會整頁套用（總額／已付／圖表／明細都跟著
  * 篩），分類標籤跟搜尋只影響明細列表本身。
  *
+ * 「與我相關 → 我的消費」是篩選之一：只留目前身分有分攤的支出，並把總額、日幣／現金／台幣
+ * 三欄、圖表全部改成「我的分攤額」口徑（明細列仍顯示整筆金額，所以加起來不會等於總額）。
+ * 每人卡的「分攤」永遠是各人在目前這批支出裡該負擔的金額，跟「已付」對照用。
+ *
  * 結算依 splitAmong 計算（見 lib/money.ts settle()），代購也算進去；只有一位身份時
  * 完全不顯示已付卡／結算按鈕——這兩者只有多人才有意義。
  */
@@ -58,6 +65,7 @@ export default function MoneyTab() {
   const currencySymbol = useStore((s) => s.entities.settings.currencySymbol ?? '¥')
   const cardLabel = useStore((s) => s.entities.settings.cardLabel ?? '信用卡')
   const memberNames = useMemberNames()
+  const me = useStore((s) => s.ui.auth.role)
   const openAddExpense = useStore((s) => s.openAddExpense)
   const openEditExpense = useStore((s) => s.openEditExpense)
   const openCatMgr = useStore((s) => s.openCatMgr)
@@ -68,6 +76,7 @@ export default function MoneyTab() {
   const [expDate, setExpDate] = useState<string>(ALL_FILTER)
   const [expMethod, setExpMethod] = useState<string>(ALL_FILTER)
   const [expPayer, setExpPayer] = useState<string>(ALL_FILTER)
+  const [onlyMine, setOnlyMine] = useState(false) // 與我相關：只看「我有分攤」的支出，金額改以我的分攤額計
   const [daigouFilter, setDaigouFilter] = useState<DaigouFilter>('不含代購')
   const [chartMode, setChartMode] = useState<'day' | 'cat'>('day')
   const [dailyExpanded, setDailyExpanded] = useState(false)
@@ -84,6 +93,11 @@ export default function MoneyTab() {
   })
 
   const rate = rateNum(rateStr)
+  // 「我的消費」模式：目前身分有分攤的支出才留下，總額／三欄／圖表都改用「我的分攤額」。
+  // 單一身分時沒有意義（全部都是我的），身分還沒選定時也不啟用。
+  const mine = onlyMine && !singleMember && me !== null
+  const amtNative = (e: (typeof expenses)[number]) => (mine ? shareNative(e, me, memberNames) : e.amt)
+  const amtTwd = (e: (typeof expenses)[number]) => (mine ? shareOfTwd(e, me, memberNames, rate) : twd(e, rate))
   const items = useMemo(
     () => expenses.filter((e) => e.deleted !== 1).slice().sort((a, b) => b.updated_at - a.updated_at),
     [expenses],
@@ -102,21 +116,24 @@ export default function MoneyTab() {
   )
   const dayBase = useMemo(() => {
     const byMethod = expMethod === ALL_FILTER ? daigouFiltered : daigouFiltered.filter((e) => payMethod(e) === expMethod)
-    return expPayer === ALL_FILTER ? byMethod : byMethod.filter((e) => e.payer === expPayer)
-  }, [daigouFiltered, expMethod, expPayer])
+    const byPayer = expPayer === ALL_FILTER ? byMethod : byMethod.filter((e) => e.payer === expPayer)
+    return mine ? byPayer.filter((e) => isInSplit(e, me, memberNames)) : byPayer
+  }, [daigouFiltered, expMethod, expPayer, mine, me, memberNames])
   const effItems = useMemo(
     () => (expDate === ALL_FILTER ? dayBase : dayBase.filter((e) => e.spent_on === expDate)),
     [dayBase, expDate],
   )
 
-  const jpyTotal = effItems.filter((e) => e.cur === 'JPY').reduce((sum, e) => sum + e.amt, 0)
+  const jpyTotal = effItems.filter((e) => e.cur === 'JPY').reduce((sum, e) => sum + amtNative(e), 0)
   const jpyCashTotal = effItems
     .filter((e) => e.cur === 'JPY' && payMethod(e) === 'cash')
-    .reduce((sum, e) => sum + e.amt, 0)
-  const twdDirectTotal = effItems.filter((e) => e.cur === 'TWD').reduce((sum, e) => sum + e.amt, 0)
-  const grandTotal = effItems.reduce((sum, e) => sum + twd(e, rate), 0)
+    .reduce((sum, e) => sum + amtNative(e), 0)
+  const twdDirectTotal = effItems.filter((e) => e.cur === 'TWD').reduce((sum, e) => sum + amtNative(e), 0)
+  const grandTotal = effItems.reduce((sum, e) => sum + amtTwd(e), 0)
 
   const paidTwdOf = (person: string) => effItems.reduce((sum, e) => sum + (twd({ cur: e.cur, amt: payersOf(e)[person] ?? 0 }, rate)), 0)
+  // 每人卡的「分攤」：這些支出裡各人該負擔多少，跟「已付」對照就看得出誰多付、誰少付。
+  const shareTwdSumOf = (person: string) => effItems.reduce((sum, e) => sum + shareOfTwd(e, person, memberNames, rate), 0)
   const paidJpyOf = (person: string) =>
     effItems.filter((e) => e.cur === 'JPY').reduce((sum, e) => sum + (payersOf(e)[person] ?? 0), 0)
   const paidJpyCashOf = (person: string) =>
@@ -132,7 +149,7 @@ export default function MoneyTab() {
     const totals = new Map<string, { sum: number; byMethod: Record<string, number> }>()
     for (const e of effItems) {
       const entry = totals.get(e.cat) ?? { sum: 0, byMethod: {} }
-      const amt = twd(e, rate)
+      const amt = amtTwd(e)
       entry.sum += amt
       const m = payMethod(e)
       entry.byMethod[m] = (entry.byMethod[m] ?? 0) + amt
@@ -141,14 +158,14 @@ export default function MoneyTab() {
     return [...totals.entries()]
       .filter(([, v]) => v.sum > 0)
       .sort((a, b) => b[1].sum - a[1].sum)
-  }, [effItems, rate])
+  }, [effItems, rate, mine, me, memberNames])
 
   const dailyTotals = useMemo(() => {
     const totals = new Map<string, { sum: number; byMethod: Record<string, number> }>()
     for (const e of dayBase) {
       if (!e.spent_on) continue
       const entry = totals.get(e.spent_on) ?? { sum: 0, byMethod: {} }
-      const amt = twd(e, rate)
+      const amt = amtTwd(e)
       entry.sum += amt
       const m = payMethod(e)
       entry.byMethod[m] = (entry.byMethod[m] ?? 0) + amt
@@ -157,7 +174,7 @@ export default function MoneyTab() {
     return [...totals.entries()]
       .filter(([, v]) => v.sum > 0)
       .sort((a, b) => b[0].localeCompare(a[0]))
-  }, [dayBase, rate])
+  }, [dayBase, rate, mine, me, memberNames])
   const dailyGrandTotal = dailyTotals.reduce((sum, [, v]) => sum + v.sum, 0)
   const visibleDailyTotals = dailyExpanded ? dailyTotals : dailyTotals.slice(0, 2)
 
@@ -197,12 +214,14 @@ export default function MoneyTab() {
     (expMethod !== ALL_FILTER ? 1 : 0) +
     (daigouFilter !== '不含代購' ? 1 : 0) +
     (expDate !== ALL_FILTER ? 1 : 0) +
-    (expPayer !== ALL_FILTER ? 1 : 0)
+    (expPayer !== ALL_FILTER ? 1 : 0) +
+    (mine ? 1 : 0)
   const clearFilters = () => {
     setExpMethod(ALL_FILTER)
     setDaigouFilter('不含代購')
     setExpDate(ALL_FILTER)
     setExpPayer(ALL_FILTER)
+    setOnlyMine(false)
   }
 
   const settleLines = useMemo(() => settle(items, memberNames, rate), [items, memberNames, rate])
@@ -268,7 +287,9 @@ export default function MoneyTab() {
 
       <div className="money-total-row">
         <div className="money-total-body">
-          <div className="money-total-kicker">總支出（台幣計，匯率 {rateStr}）</div>
+          <div className="money-total-kicker">
+            {mine ? '我的消費（以分攤額計，台幣，' : '總支出（台幣計，'}匯率 {rateStr}）
+          </div>
           <div className="money-total-amount">{formatTWD(grandTotal)}</div>
 
           <div className="money-dual-currency">
@@ -298,6 +319,7 @@ export default function MoneyTab() {
                   <div key={payer} className={`money-payer-card${isLastOdd ? ' money-payer-card--full' : ''}`}>
                     <div className="money-payer-name">{payer} 已付</div>
                     <div className="money-payer-amount">{formatTWD(paidTwdOf(payer))}</div>
+                    <div className="money-payer-sub">分攤 {formatTWD(shareTwdSumOf(payer))}</div>
                     <div className="money-payer-sub">
                       {jpySum > 0 ? `含${currencyName} ${currencySymbol}${jpySum.toLocaleString('zh-Hant')}` : '全為台幣支付'}
                     </div>
@@ -567,6 +589,27 @@ export default function MoneyTab() {
                       onClick={() => setExpPayer(v)}
                     >
                       {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!singleMember && me !== null && (
+              <div className="edit-kind-block">
+                <div className="edit-section-label">與我相關</div>
+                <div className="edit-kind-chips">
+                  {[
+                    { label: ALL_FILTER, value: false },
+                    { label: '我的消費', value: true },
+                  ].map(({ label, value }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className={`edit-kind-chip${onlyMine === value ? ' is-selected' : ''}`}
+                      onClick={() => setOnlyMine(value)}
+                    >
+                      {label}
                     </button>
                   ))}
                 </div>
